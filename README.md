@@ -134,27 +134,36 @@ extensions loaded and paired:
    `packages/hub/.wrangler/state/v3/do/*/*.sqlite` — every `inbox` row's `envelope` column
    should contain only `iv`/`ciphertext` (base64), never a raw URL or title.
 
-## Firefox build → AMO (SPIKE-1/SPIKE-1b, manual, human step)
+## Firefox build → AMO (SPIKE-1/SPIKE-1b/SPIKE-4, manual, human step)
 
 `packages/ext`'s `browser_specific_settings.gecko.id` is **permanent** once first submitted to
 AMO — currently `portage@lettieri.dev`. Confirm this is the value you want before submitting;
 it cannot be changed afterwards.
 
-```bash
-WEB_EXT_API_KEY=... WEB_EXT_API_SECRET=... pnpm --filter ext sign
+Create `packages/ext/.env.submit` (see `.env.example`) with:
+
+```
+FIREFOX_JWT_ISSUER=...
+FIREFOX_JWT_SECRET=...
+FIREFOX_CHANNEL=unlisted
 ```
 
-Get `WEB_EXT_API_KEY`/`WEB_EXT_API_SECRET` from
-https://addons.mozilla.org/developers/addon/api/key/ (or put them in a repo-root `.env` — see
-`.env.example`; real environment variables always outrank the file). `sign` rebuilds the
-Firefox target first (`wxt build -b firefox`), then submits as an **unlisted** add-on
-(`--channel unlisted`) and downloads the signed `.xpi` into `packages/ext/web-ext-artifacts/`
-on success.
+Get the issuer/secret pair from https://addons.mozilla.org/en-US/developers/addon/api/key/.
+Then, from `packages/ext`:
+
+```bash
+pnpm run zip:firefox           # wxt build -b firefox + zips extension and sources together
+pnpm run submit:firefox:dry-run   # sanity-checks auth against the addon, uploads nothing
+pnpm run submit:firefox            # uploads and submits as an unlisted add-on
+```
 
 AMO permanently rejects re-uploading a version string, even a deleted one — bump the `version`
 field in `packages/ext/package.json` before each new submission; nothing does this
-automatically. Install the returned `.xpi` in Zen permanently to confirm it survives a browser
-restart.
+automatically.
+
+`wxt submit` does not download a signed `.xpi` locally (SPIKE-4) — after submitting, get it
+from the AMO developer hub link printed in the terminal output, then install it in Zen
+permanently to confirm it survives a browser restart.
 
 ## Not yet done
 
