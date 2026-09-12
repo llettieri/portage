@@ -1,0 +1,8 @@
+packages:
+  - 'packages/*'
+
+allowBuilds:
+  esbuild: true
+  workerd: true
+
+minimumReleaseAge: 10080
