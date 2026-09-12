@@ -1,0 +1,30 @@
+{
+  "name": "ext",
+  "version": "0.1.2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "postinstall": "wxt prepare",
+    "dev:chrome": "wxt -b chrome",
+    "dev:firefox": "wxt -b firefox",
+    "build": "pnpm run build:chrome && pnpm run build:firefox",
+    "build:chrome": "wxt build -b chrome",
+    "build:firefox": "wxt build -b firefox",
+    "sign": "node sign.mjs",
+    "source": "node build-source.mjs",
+    "test": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "protocol": "workspace:*",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@wxt-dev/module-react": "^1.2.2",
+    "typescript": "^7.0.2",
+    "web-ext": "^10.6.0",
+    "wxt": "^0.21.4"
+  }
+}
