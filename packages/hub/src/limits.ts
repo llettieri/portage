@@ -1,0 +1,4 @@
+export const MAX_PAYLOAD_BYTES = 64 * 1024;
+export const MAX_QUEUE_DEPTH_PER_DEVICE = 500;
+export const RATE_LIMIT_WINDOW_MS = 10_000;
+export const RATE_LIMIT_MAX_MESSAGES = 60;
