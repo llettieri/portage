@@ -71,6 +71,27 @@ export async function setStoredPassphrase(passphrase: string | null): Promise<vo
   }
 }
 
+export interface SetupDraft {
+  host: string;
+  useTls: boolean;
+  pairingPayloadIn: string;
+}
+
+const emptyDraft: SetupDraft = { host: '', useTls: false, pairingPayloadIn: '' };
+
+// Draft inputs for the not-yet-configured setup form (host, TLS toggle, pasted pairing
+// payload) so reopening the popup doesn't lose what was typed. The passphrase is
+// deliberately excluded — unlike this draft, it's a secret, and every other passphrase
+// path in this file goes through storage.session (memory-only), never storage.local.
+export async function getSetupDraft(): Promise<SetupDraft> {
+  const stored = await browser.storage.local.get('setupDraft');
+  return { ...emptyDraft, ...(stored.setupDraft as Partial<SetupDraft> | undefined) };
+}
+
+export async function setSetupDraft(draft: SetupDraft): Promise<void> {
+  await browser.storage.local.set({ setupDraft: draft });
+}
+
 export async function getDecryptError(): Promise<boolean> {
   const stored = await browser.storage.local.get('decryptError');
   return typeof stored.decryptError === 'boolean' ? stored.decryptError : false;

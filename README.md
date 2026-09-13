@@ -91,8 +91,9 @@ a local Zen binary — see `packages/ext/wxt.config.ts`'s `webExt.binaries.firef
 
 Both popups share the same flow:
 
-1. **First device — "Create a new room":** enter a shared passphrase and the hub's base URL
-   (`ws://127.0.0.1:8787` for local dev), click **Create a new room**. A pairing payload
+1. **First device — "Create a new room":** enter a shared passphrase and the hub's host
+   (`127.0.0.1:8787` for local dev — no `ws://` prefix; check **Use TLS** only if the hub is
+   served over `wss`/`https`), click **Create a new room**. A pairing payload
    appears in a text box — copy it. This mints a fresh random room ID, derives an encryption
    key from the passphrase (PBKDF2, 600,000 iterations), and registers this device with the
    hub.
