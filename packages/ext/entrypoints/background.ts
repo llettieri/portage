@@ -97,6 +97,30 @@ async function setupCreate(passphrase: string, hubBaseUrl: string): Promise<{ pa
   return { pairingPayloadOut };
 }
 
+async function inviteDevice(): Promise<{ pairingPayloadOut: string }> {
+  const config = await getRoomConfig();
+  if (!config) throw new Error('no room configured');
+  const deviceId = await getDeviceId();
+
+  const issueRes = await fetch(`${toHttpBase(config.hubUrl)}/pair/issue`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${config.deviceToken}` },
+    body: JSON.stringify({ device: deviceId }),
+  });
+  if (!issueRes.ok) throw new Error(`pair/issue failed: ${issueRes.status}`);
+  const { code } = (await issueRes.json()) as { code: string };
+
+  const pairingPayloadOut = encodePairingPayload({
+    v: 1,
+    room: config.roomId,
+    salt: config.salt,
+    iterations: config.iterations,
+    code,
+    hubUrl: config.hubUrl,
+  });
+  return { pairingPayloadOut };
+}
+
 async function setupJoin(passphrase: string, pairingPayload: string): Promise<void> {
   const deviceId = await getDeviceId();
   const payload = decodePairingPayload(pairingPayload);
@@ -332,6 +356,12 @@ export default defineBackground({
           void setupJoin(message.passphrase, message.pairingPayload)
             .then(() => connect())
             .then(() => sendResponse({ ok: true }))
+            .catch((error: unknown) => sendResponse({ ok: false, error: String(error) }));
+          return true;
+        }
+        if (message?.type === 'invite-device') {
+          void inviteDevice()
+            .then((result) => sendResponse({ ok: true, ...result }))
             .catch((error: unknown) => sendResponse({ ok: false, error: String(error) }));
           return true;
         }

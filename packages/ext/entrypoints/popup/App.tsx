@@ -87,6 +87,20 @@ export function App() {
     await refresh();
   }
 
+  async function handleInvite(): Promise<void> {
+    setActionError(null);
+    const response = (await browser.runtime.sendMessage({ type: 'invite-device' })) as {
+      ok: boolean;
+      pairingPayloadOut?: string;
+      error?: string;
+    };
+    if (response?.ok && response.pairingPayloadOut) {
+      setPairingPayloadOut(response.pairingPayloadOut);
+    } else {
+      setActionError(`Could not create invite: ${response?.error ?? 'unknown error'}`);
+    }
+  }
+
   async function handleSendTab(): Promise<void> {
     setActionError(null);
     const response = (await browser.runtime.sendMessage({ type: 'send-tab' })) as { ok: boolean; error?: string };
@@ -136,6 +150,9 @@ export function App() {
         onClick={() => void handleSendTab()}
       >
         Send current tab
+      </button>
+      <button style={{ display: view.roomConfigured ? 'block' : 'none' }} onClick={() => void handleInvite()}>
+        Invite another device
       </button>
       <button style={{ display: view.roomConfigured ? 'block' : 'none' }} onClick={() => void handleForgetRoom()}>
         Forget this room
