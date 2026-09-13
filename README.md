@@ -47,8 +47,8 @@ lifecycle, key persistence across a restart).
 **Not yet deployed.** The hub now has real authentication and encryption (TASK-002 is
 complete — pairing codes, per-device bearer tokens, AES-GCM with AAD-bound headers, a durable
 per-device inbox queue), so nothing here blocks deploying on security grounds anymore. Deploy
-is deliberately deferred as a separate, explicit step — run `pnpm --filter hub exec wrangler
-deploy` only when you're ready to make the hub a real, publicly reachable Cloudflare Worker,
+is deliberately deferred as a separate, explicit step — run `pnpm --filter hub deploy` only
+when you're ready to make the hub a real, publicly reachable Cloudflare Worker,
 and re-run the full manual verification below against the deployed URL from two physically
 separate machines afterward (not two profiles on one machine).
 
