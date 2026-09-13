@@ -1,7 +1,11 @@
 # Portage
 
 Cross-browser tab handoff between Arc (macOS) and Zen (Windows/macOS), via an encrypted
-Cloudflare Durable Object hub. See `CLAUDE.md` for architecture and hard constraints.
+Cloudflare Durable Object hub. No accounts, no third-party service — the hub only ever sees
+ciphertext.
+
+See [`docs/SPEC.md`](docs/SPEC.md) for the full specification (what the system does and how it
+behaves) and `CLAUDE.md` for the architecture, hard constraints, and the reasoning behind them.
 
 ## Packages
 
@@ -172,3 +176,8 @@ No presence (live tab-list sync) or stash (saved-links list) — those are separ
 out of scope for TASK-001/TASK-002. No per-device recipient picker — "send current tab" always
 addresses every other device in the room. Deploy and the associated two-machine verification
 (see "Deploy status" above).
+
+## License
+
+[CC BY-NC-SA 4.0](LICENSE) — free to use, modify, and redistribute for non-commercial purposes,
+with attribution, as long as derivative work carries the same license.

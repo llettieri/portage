@@ -5,8 +5,7 @@ a handful of their own devices, no accounts, no third-party service.
 
 This document specifies the finished system — what it does and how it behaves. It carries no
 implementation status. `CLAUDE.md` holds the non-negotiable constraints and the reasoning
-behind them; the design-rationale artifact records why the architecture is shaped this way and
-what was rejected along the road.
+behind them, including what was rejected along the road.
 
 MUST / MUST NOT / SHOULD carry their usual force.
 

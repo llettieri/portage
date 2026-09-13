@@ -4,7 +4,10 @@ Cross-browser tab handoff between **Arc on macOS** and **Zen on Windows** (a Fir
 One browser extension, cross-built for both browsers, plus an encrypted Cloudflare hub.
 No native code, no daemons.
 
-Full design rationale: https://claude.ai/code/artifact/6666558e-cab5-4936-a1ef-4ed807bdd7b2
+This file holds the constraints and the reasoning behind them, for whoever is writing code
+here — human or agent. `docs/SPEC.md` is the finished-system reference: what the system does
+and how it behaves, without implementation status. Read that first if you're new to the
+project; come back here before touching anything the constraints below cover.
 
 ## Architecture
 
