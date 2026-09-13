@@ -1,6 +1,6 @@
 {
   "name": "hub",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,9 +14,9 @@
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",
-    "@cloudflare/workers-types": "^5.0.0",
+    "@cloudflare/workers-types": "^5.20260906.1",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11",
-    "wrangler": "^4.0.0"
+    "wrangler": "^4.129.0"
   }
 }
