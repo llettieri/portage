@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { computeReconnectDelay, DEFAULT_BACKOFF } from './reconnect.js';
 
-const noJitter = () => 0.5; // rand() * 2 - 1 === 0 at 0.5
+const noJitter = (): number => 0.5; // rand() * 2 - 1 === 0 at 0.5
 
 describe('computeReconnectDelay', () => {
   it('starts at roughly the base delay on the first attempt', () => {

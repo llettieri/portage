@@ -111,8 +111,9 @@ async function setupCreate(
   if (!deviceToken)
     throw new Error('pair/issue did not bootstrap a device token');
 
-  cachedCryptoKey = await deriveKey(passphrase, salt, iterations);
-  const keyCheck = await computeKeyCheck(cachedCryptoKey);
+  const key = await deriveKey(passphrase, salt, iterations);
+  cachedCryptoKey = key;
+  const keyCheck = await computeKeyCheck(key);
   const config: RoomConfig = {
     roomId,
     hubUrl,
@@ -174,12 +175,13 @@ async function setupJoin(
     throw new Error(`pair/consume failed: ${consumeRes.status}`);
   const { deviceToken } = (await consumeRes.json()) as { deviceToken: string };
 
-  cachedCryptoKey = await deriveKey(
+  const key = await deriveKey(
     passphrase,
     fromBase64(payload.salt),
     payload.iterations,
   );
-  const keyCheck = await computeKeyCheck(cachedCryptoKey);
+  cachedCryptoKey = key;
+  const keyCheck = await computeKeyCheck(key);
   const config: RoomConfig = {
     roomId: payload.room,
     hubUrl: payload.hubUrl,

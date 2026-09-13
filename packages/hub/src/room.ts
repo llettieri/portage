@@ -127,15 +127,15 @@ export class Room implements DurableObject {
         return new Response('payload too large', { status: 413 });
     }
     if (request.method === 'POST' && sub === 'pair/issue')
-      return this.handlePairIssue(request);
+      return await this.handlePairIssue(request);
     if (request.method === 'POST' && sub === 'pair/consume')
-      return this.handlePairConsume(request);
+      return await this.handlePairConsume(request);
     if (request.method === 'POST' && sub === 'pair/revoke')
-      return this.handlePairRevoke(request);
+      return await this.handlePairRevoke(request);
     if (request.method === 'POST' && sub === 'inbox/drain')
-      return this.handleInboxDrain(request);
+      return await this.handleInboxDrain(request);
     if (request.method === 'POST' && sub === 'inbox/ack')
-      return this.handleInboxAck(request);
+      return await this.handleInboxAck(request);
     if (sub === '')
       return new Response('expected websocket upgrade', { status: 426 });
     return new Response('not found', { status: 404 });
@@ -175,7 +175,7 @@ export class Room implements DurableObject {
     return token;
   }
 
-  private async checkBearerAuth(
+  private checkBearerAuth(
     request: Request,
     deviceId: string,
   ): Promise<boolean> {
@@ -307,6 +307,9 @@ export class Room implements DurableObject {
     if (!envelope.to) {
       // getWebSockets(undefined) returns every socket in the room, not zero — an
       // envelope missing `to` must be dropped explicitly, never fanned out.
+      // Deliberate operational log (observability is enabled in wrangler.toml),
+      // not leftover debugging — this is the Workers-native way to surface it.
+      // eslint-disable-next-line no-console
       console.log('dropping envelope with no `to`', envelope);
       return;
     }

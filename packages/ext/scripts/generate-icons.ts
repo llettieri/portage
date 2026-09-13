@@ -8,7 +8,7 @@ const OUTPUT_DIR = 'public/icons';
 const EXTENSION_SIZES = [16, 32, 48, 128];
 const ACTION_SIZES = [16, 24, 32];
 
-async function generateIcons() {
+async function generateIcons(): Promise<void> {
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
   const sourceBuffer = fs.readFileSync(SOURCE);
 
@@ -43,7 +43,7 @@ async function generateIcons() {
   console.log('\nAll icons generated successfully.');
 }
 
-generateIcons().catch((error) => {
+generateIcons().catch((error: unknown) => {
   console.error(error);
   process.exitCode = 1;
 });

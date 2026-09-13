@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { getSetupDraft, setSetupDraft } from '@/lib/state.ts';
 import { EyeIcon, EyeOffIcon } from '@/entrypoints/popup/icons.tsx';
 
@@ -7,7 +7,7 @@ interface SetupFormProps {
   onJoin: (passphrase: string, pairingPayload: string) => void;
 }
 
-export function SetupForm({ onCreate, onJoin }: SetupFormProps) {
+export function SetupForm({ onCreate, onJoin }: SetupFormProps): ReactNode {
   const [mode, setMode] = useState<'create' | 'join'>('create');
   const passphraseRef = useRef<HTMLInputElement>(null);
   const [reveal, setReveal] = useState(false);

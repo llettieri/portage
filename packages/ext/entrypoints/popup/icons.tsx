@@ -1,8 +1,10 @@
+import type { ReactNode } from 'react';
+
 interface IconProps {
   size?: number;
 }
 
-export function SendIcon({ size = 14 }: IconProps) {
+export function SendIcon({ size = 14 }: IconProps): ReactNode {
   return (
     <svg
       width={size}
@@ -22,7 +24,7 @@ export function SendIcon({ size = 14 }: IconProps) {
   );
 }
 
-export function PlusIcon({ size = 14 }: IconProps) {
+export function PlusIcon({ size = 14 }: IconProps): ReactNode {
   return (
     <svg
       width={size}
@@ -41,7 +43,7 @@ export function PlusIcon({ size = 14 }: IconProps) {
   );
 }
 
-export function CopyIcon({ size = 14 }: IconProps) {
+export function CopyIcon({ size = 14 }: IconProps): ReactNode {
   return (
     <svg
       width={size}
@@ -69,7 +71,7 @@ export function CopyIcon({ size = 14 }: IconProps) {
   );
 }
 
-export function CheckIcon({ size = 14 }: IconProps) {
+export function CheckIcon({ size = 14 }: IconProps): ReactNode {
   return (
     <svg
       width={size}
@@ -89,7 +91,7 @@ export function CheckIcon({ size = 14 }: IconProps) {
   );
 }
 
-export function EyeIcon({ size = 14 }: IconProps) {
+export function EyeIcon({ size = 14 }: IconProps): ReactNode {
   return (
     <svg
       width={size}
@@ -109,7 +111,7 @@ export function EyeIcon({ size = 14 }: IconProps) {
   );
 }
 
-export function EyeOffIcon({ size = 14 }: IconProps) {
+export function EyeOffIcon({ size = 14 }: IconProps): ReactNode {
   return (
     <svg
       width={size}
@@ -129,7 +131,7 @@ export function EyeOffIcon({ size = 14 }: IconProps) {
   );
 }
 
-export function DismissIcon({ size = 12 }: IconProps) {
+export function DismissIcon({ size = 12 }: IconProps): ReactNode {
   return (
     <svg
       width={size}
@@ -148,7 +150,7 @@ export function DismissIcon({ size = 12 }: IconProps) {
   );
 }
 
-export function TrailGlyph({ size = 15 }: IconProps) {
+export function TrailGlyph({ size = 15 }: IconProps): ReactNode {
   return (
     <svg
       width={size}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   CheckIcon,
   CopyIcon,
@@ -10,7 +10,10 @@ interface PairingCodeCardProps {
   onDismiss: () => void;
 }
 
-export function PairingCodeCard({ value, onDismiss }: PairingCodeCardProps) {
+export function PairingCodeCard({
+  value,
+  onDismiss,
+}: PairingCodeCardProps): ReactNode {
   const [copied, setCopied] = useState(false);
 
   async function handleCopy(): Promise<void> {

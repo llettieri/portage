@@ -13,6 +13,6 @@ export default {
 
     const id = env.ROOM.idFromName(roomId);
     const stub = env.ROOM.get(id);
-    return stub.fetch(request);
+    return await stub.fetch(request);
   },
 };

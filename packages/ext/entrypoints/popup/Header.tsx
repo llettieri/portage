@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { TrailGlyph } from '@/entrypoints/popup/icons.tsx';
 
 interface HeaderProps {
@@ -5,7 +6,7 @@ interface HeaderProps {
   showStatus: boolean;
 }
 
-export function Header({ connected, showStatus }: HeaderProps) {
+export function Header({ connected, showStatus }: HeaderProps): ReactNode {
   return (
     <header className="header">
       <div className="wordmark">

@@ -1,11 +1,11 @@
-import { useId, useRef, useState } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
 import { EyeIcon, EyeOffIcon } from '@/entrypoints/popup/icons.tsx';
 
 interface UnlockFormProps {
   onUnlock: (passphrase: string) => void;
 }
 
-export function UnlockForm({ onUnlock }: UnlockFormProps) {
+export function UnlockForm({ onUnlock }: UnlockFormProps): ReactNode {
   const passphraseRef = useRef<HTMLInputElement>(null);
   const [reveal, setReveal] = useState(false);
   const fieldId = useId();

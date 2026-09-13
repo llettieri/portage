@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   getDecryptError,
   getPendingHandoffs,
@@ -29,7 +29,7 @@ const initialView: ViewState = {
   pending: [],
 };
 
-export function App() {
+export function App(): ReactNode {
   const [view, setView] = useState<ViewState>(initialView);
   const [pairingPayloadOut, setPairingPayloadOut] = useState<string | null>(
     null,
@@ -89,7 +89,8 @@ export function App() {
       }
     }
     browser.storage.onChanged.addListener(onStorageChanged);
-    return () => browser.storage.onChanged.removeListener(onStorageChanged);
+    return (): void =>
+      browser.storage.onChanged.removeListener(onStorageChanged);
   }, []);
 
   async function handleCreate(

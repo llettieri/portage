@@ -7,7 +7,7 @@ interface BannerProps {
   onDismiss?: () => void;
 }
 
-export function Banner({ tone, children, onDismiss }: BannerProps) {
+export function Banner({ tone, children, onDismiss }: BannerProps): ReactNode {
   return (
     <div className={`banner banner-${tone}`} role="alert">
       <span className="banner-text">{children}</span>

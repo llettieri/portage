@@ -65,9 +65,7 @@ const eslintConfig = defineConfig([
       'valid-typeof': ['error'],
     },
   },
-  // Only `packages/ext` is a React app (WXT + browser extension popup) — the hooks
-  // rules and WXT's auto-import globals (browser, defineBackground, useState, ...)
-  // don't apply to `protocol` (plain TS lib) or `hub` (Cloudflare Worker).
+  // Only `packages/ext` is a React app (WXT + browser extension popup)
   {
     ...reactHooks.configs.flat['recommended-latest'],
     files: ['packages/ext/**/*.{ts,tsx}'],
@@ -78,12 +76,26 @@ const eslintConfig = defineConfig([
       globals: wxtAutoImports.languageOptions.globals,
     },
   },
-  // Plain Node scripts (build/tooling scripts, root config files) — not covered by
-  // typescript-eslint's recommended config, which only turns off no-undef for TS files.
+  // Plain Node scripts (build/tooling scripts, root config files)
   {
     files: ['**/*.{js,mjs,cjs}'],
     languageOptions: {
       globals: globals.node,
+    },
+  },
+  {
+    files: ['**/scripts/**'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  // Test helpers are frequently typed async for framework/mock-signature compatibility
+  // and console output in a test is deliberate debugging aid, not a mistake.
+  {
+    files: ['**/*.test.{ts,tsx}'],
+    rules: {
+      'no-console': 'off',
+      'require-await': 'off',
     },
   },
   globalIgnores([

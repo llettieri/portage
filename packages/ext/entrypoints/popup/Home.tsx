@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { PendingHandoff } from '@/lib/state.ts';
 import { CheckIcon, PlusIcon, SendIcon } from '@/entrypoints/popup/icons.tsx';
 import { ReceivedList } from '@/entrypoints/popup/ReceivedList.tsx';
@@ -21,7 +21,7 @@ export function Home({
   onForget,
   onOpen,
   onRemove,
-}: HomeProps) {
+}: HomeProps): ReactNode {
   const [sendPhase, setSendPhase] = useState<SendPhase>('idle');
   const [confirmingForget, setConfirmingForget] = useState(false);
 

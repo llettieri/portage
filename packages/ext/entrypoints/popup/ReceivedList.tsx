@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { PendingHandoff } from '@/lib/state.ts';
 import { DismissIcon } from '@/entrypoints/popup/icons.tsx';
 
@@ -21,7 +22,11 @@ function hostFor(url: string): string {
   }
 }
 
-export function ReceivedList({ items, onOpen, onRemove }: ReceivedListProps) {
+export function ReceivedList({
+  items,
+  onOpen,
+  onRemove,
+}: ReceivedListProps): ReactNode {
   return (
     <div className="field">
       <span className="eyebrow">
