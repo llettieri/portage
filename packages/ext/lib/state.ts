@@ -63,7 +63,9 @@ export async function getStoredPassphrase(): Promise<string | null> {
   return typeof stored.passphrase === 'string' ? stored.passphrase : null;
 }
 
-export async function setStoredPassphrase(passphrase: string | null): Promise<void> {
+export async function setStoredPassphrase(
+  passphrase: string | null,
+): Promise<void> {
   if (passphrase === null) {
     await browser.storage.session.remove('passphrase');
   } else {
@@ -77,7 +79,11 @@ export interface SetupDraft {
   pairingPayloadIn: string;
 }
 
-const emptyDraft: SetupDraft = { host: '', useTls: false, pairingPayloadIn: '' };
+const emptyDraft: SetupDraft = {
+  host: '',
+  useTls: false,
+  pairingPayloadIn: '',
+};
 
 // Draft inputs for the not-yet-configured setup form (host, TLS toggle, pasted pairing
 // payload) so reopening the popup doesn't lose what was typed. The passphrase is
@@ -85,7 +91,10 @@ const emptyDraft: SetupDraft = { host: '', useTls: false, pairingPayloadIn: '' }
 // path in this file goes through storage.session (memory-only), never storage.local.
 export async function getSetupDraft(): Promise<SetupDraft> {
   const stored = await browser.storage.local.get('setupDraft');
-  return { ...emptyDraft, ...(stored.setupDraft as Partial<SetupDraft> | undefined) };
+  return {
+    ...emptyDraft,
+    ...(stored.setupDraft as Partial<SetupDraft> | undefined),
+  };
 }
 
 export async function setSetupDraft(draft: SetupDraft): Promise<void> {
@@ -109,7 +118,9 @@ export interface PendingHandoff {
 
 export async function getPendingHandoffs(): Promise<PendingHandoff[]> {
   const stored = await browser.storage.local.get('pendingHandoffs');
-  return Array.isArray(stored.pendingHandoffs) ? (stored.pendingHandoffs as PendingHandoff[]) : [];
+  return Array.isArray(stored.pendingHandoffs)
+    ? (stored.pendingHandoffs as PendingHandoff[])
+    : [];
 }
 
 export async function addPendingHandoff(item: PendingHandoff): Promise<void> {
@@ -118,8 +129,12 @@ export async function addPendingHandoff(item: PendingHandoff): Promise<void> {
   await browser.storage.local.set({ pendingHandoffs: [...existing, item] });
 }
 
-export async function removePendingHandoff(target: PendingHandoff): Promise<void> {
+export async function removePendingHandoff(
+  target: PendingHandoff,
+): Promise<void> {
   const existing = await getPendingHandoffs();
-  const filtered = existing.filter((h) => !(h.url === target.url && h.title === target.title));
+  const filtered = existing.filter(
+    (h) => !(h.url === target.url && h.title === target.title),
+  );
   await browser.storage.local.set({ pendingHandoffs: filtered });
 }

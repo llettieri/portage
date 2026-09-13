@@ -12,7 +12,12 @@ export function Banner({ tone, children, onDismiss }: BannerProps) {
     <div className={`banner banner-${tone}`} role="alert">
       <span className="banner-text">{children}</span>
       {onDismiss && (
-        <button type="button" className="banner-dismiss" aria-label="Dismiss" onClick={onDismiss}>
+        <button
+          type="button"
+          className="banner-dismiss"
+          aria-label="Dismiss"
+          onClick={onDismiss}
+        >
           <DismissIcon />
         </button>
       )}

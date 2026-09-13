@@ -15,7 +15,10 @@ export function Header({ connected, showStatus }: HeaderProps) {
         Portage
       </div>
       {showStatus && (
-        <div className={`status-pill${connected ? ' is-connected' : ''}`} role="status">
+        <div
+          className={`status-pill${connected ? 'is-connected' : ''}`}
+          role="status"
+        >
           <span className="status-dot" />
           {connected ? 'Connected' : 'Offline'}
         </div>

@@ -3,12 +3,24 @@ import { serializeHeader } from './header.js';
 
 describe('serializeHeader', () => {
   it('is deterministic for the same fields', () => {
-    const header = { room: 'r1', device: 'd1', to: 'd2', kind: 'handoff' as const, ts: 100 };
+    const header = {
+      room: 'r1',
+      device: 'd1',
+      to: 'd2',
+      kind: 'handoff' as const,
+      ts: 100,
+    };
     expect(serializeHeader(header)).toEqual(serializeHeader({ ...header }));
   });
 
   it('changes when any field changes', () => {
-    const base = { room: 'r1', device: 'd1', to: 'd2', kind: 'handoff' as const, ts: 100 };
+    const base = {
+      room: 'r1',
+      device: 'd1',
+      to: 'd2',
+      kind: 'handoff' as const,
+      ts: 100,
+    };
     const variants = [
       { ...base, room: 'r2' },
       { ...base, device: 'd9' },
@@ -23,7 +35,13 @@ describe('serializeHeader', () => {
   });
 
   it('throws when a field contains a NUL byte', () => {
-    const header = { room: 'r1', device: 'd1\0evil', to: 'd2', kind: 'handoff' as const, ts: 100 };
+    const header = {
+      room: 'r1',
+      device: 'd1\0evil',
+      to: 'd2',
+      kind: 'handoff' as const,
+      ts: 100,
+    };
     expect(() => serializeHeader(header)).toThrow();
   });
 });

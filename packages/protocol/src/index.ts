@@ -17,7 +17,12 @@ export type {
   StashItem,
   StashItemOrigin,
 } from './types.js';
-export { CURRENT_PBKDF2_ITERATIONS, decrypt, deriveKey, encrypt } from './crypto.js';
+export {
+  CURRENT_PBKDF2_ITERATIONS,
+  decrypt,
+  deriveKey,
+  encrypt,
+} from './crypto.js';
 export type { EncryptedPayload } from './crypto.js';
 export { serializeHeader } from './header.js';
 export { buildEnvelope, openEnvelope } from './envelope.js';

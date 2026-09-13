@@ -24,21 +24,35 @@ function hostFor(url: string): string {
 export function ReceivedList({ items, onOpen, onRemove }: ReceivedListProps) {
   return (
     <div className="field">
-      <span className="eyebrow">Received{items.length > 0 ? ` · ${items.length}` : ''}</span>
+      <span className="eyebrow">
+        Received{items.length > 0 ? ` · ${items.length}` : ''}
+      </span>
       {items.length === 0 ? (
-        <div className="empty-state">Tabs sent to this device will show up here.</div>
+        <div className="empty-state">
+          Tabs sent to this device will show up here.
+        </div>
       ) : (
         <div className="received-list">
           {items.map((item, index) => (
-            <div className="received-item" key={item.id ?? `${item.url}-${index}`}>
+            <div
+              className="received-item"
+              key={item.id ?? `${item.url}-${index}`}
+            >
               <span className="received-favicon" aria-hidden="true">
                 {initialFor(item)}
               </span>
               <div className="received-body">
-                <div className="received-title">{item.title || hostFor(item.url)}</div>
+                <div className="received-title">
+                  {item.title || hostFor(item.url)}
+                </div>
                 <div className="received-url">{hostFor(item.url)}</div>
               </div>
-              <button type="button" className="btn btn-secondary" style={{ width: 'auto' }} onClick={() => onOpen(item)}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ width: 'auto' }}
+                onClick={() => onOpen(item)}
+              >
                 Open
               </button>
               <button

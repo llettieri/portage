@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
-import { getDecryptError, getPendingHandoffs, getRoomConfig, removePendingHandoff, type PendingHandoff } from '@/lib/state.ts';
+import {
+  getDecryptError,
+  getPendingHandoffs,
+  getRoomConfig,
+  removePendingHandoff,
+  type PendingHandoff,
+} from '@/lib/state.ts';
 import { Banner } from '@/entrypoints/popup/Banner.tsx';
 import { Header } from '@/entrypoints/popup/Header.tsx';
 import { Home } from '@/entrypoints/popup/Home.tsx';
@@ -25,18 +31,34 @@ const initialView: ViewState = {
 
 export function App() {
   const [view, setView] = useState<ViewState>(initialView);
-  const [pairingPayloadOut, setPairingPayloadOut] = useState<string | null>(null);
+  const [pairingPayloadOut, setPairingPayloadOut] = useState<string | null>(
+    null,
+  );
   const [actionError, setActionError] = useState<string | null>(null);
 
   async function refresh(): Promise<void> {
-    const [hasDecryptError, pending, roomConfig, unlockStatus, connectionStatus] = await Promise.all([
+    const [
+      hasDecryptError,
+      pending,
+      roomConfig,
+      unlockStatus,
+      connectionStatus,
+    ] = await Promise.all([
       getDecryptError(),
       getPendingHandoffs(),
       getRoomConfig(),
-      (browser.runtime.sendMessage({ type: 'is-unlocked' }) as Promise<{ unlocked: boolean }>).catch(() => ({
+      (
+        browser.runtime.sendMessage({ type: 'is-unlocked' }) as Promise<{
+          unlocked: boolean;
+        }>
+      ).catch(() => ({
         unlocked: false,
       })),
-      (browser.runtime.sendMessage({ type: 'is-connected' }) as Promise<{ connected: boolean }>).catch(() => ({
+      (
+        browser.runtime.sendMessage({ type: 'is-connected' }) as Promise<{
+          connected: boolean;
+        }>
+      ).catch(() => ({
         connected: false,
       })),
     ]);
@@ -52,10 +74,16 @@ export function App() {
   useEffect(() => {
     void browser.runtime.sendMessage({ type: 'drain' }).then(() => refresh());
 
-    function onStorageChanged(changes: Record<string, unknown>, area: string): void {
+    function onStorageChanged(
+      changes: Record<string, unknown>,
+      area: string,
+    ): void {
       if (
         area === 'local' &&
-        ('connected' in changes || 'decryptError' in changes || 'pendingHandoffs' in changes || 'roomConfig' in changes)
+        ('connected' in changes ||
+          'decryptError' in changes ||
+          'pendingHandoffs' in changes ||
+          'roomConfig' in changes)
       ) {
         void refresh();
       }
@@ -64,9 +92,16 @@ export function App() {
     return () => browser.storage.onChanged.removeListener(onStorageChanged);
   }, []);
 
-  async function handleCreate(passphrase: string, hubBaseUrl: string): Promise<void> {
+  async function handleCreate(
+    passphrase: string,
+    hubBaseUrl: string,
+  ): Promise<void> {
     setActionError(null);
-    const response = (await browser.runtime.sendMessage({ type: 'setup-create', passphrase, hubBaseUrl })) as {
+    const response = (await browser.runtime.sendMessage({
+      type: 'setup-create',
+      passphrase,
+      hubBaseUrl,
+    })) as {
       ok: boolean;
       pairingPayloadOut?: string;
       error?: string;
@@ -74,24 +109,38 @@ export function App() {
     if (response?.ok && response.pairingPayloadOut) {
       setPairingPayloadOut(response.pairingPayloadOut);
     } else {
-      setActionError(`Could not create room: ${response?.error ?? 'unknown error'}`);
+      setActionError(
+        `Could not create room: ${response?.error ?? 'unknown error'}`,
+      );
     }
     await refresh();
   }
 
-  async function handleJoin(passphrase: string, pairingPayload: string): Promise<void> {
+  async function handleJoin(
+    passphrase: string,
+    pairingPayload: string,
+  ): Promise<void> {
     setActionError(null);
-    const response = (await browser.runtime.sendMessage({ type: 'setup-join', passphrase, pairingPayload })) as {
+    const response = (await browser.runtime.sendMessage({
+      type: 'setup-join',
+      passphrase,
+      pairingPayload,
+    })) as {
       ok: boolean;
       error?: string;
     };
-    if (!response?.ok) setActionError(`Could not join room: ${response?.error ?? 'unknown error'}`);
+    if (!response?.ok)
+      setActionError(
+        `Could not join room: ${response?.error ?? 'unknown error'}`,
+      );
     await refresh();
   }
 
   async function handleInvite(): Promise<void> {
     setActionError(null);
-    const response = (await browser.runtime.sendMessage({ type: 'invite-device' })) as {
+    const response = (await browser.runtime.sendMessage({
+      type: 'invite-device',
+    })) as {
       ok: boolean;
       pairingPayloadOut?: string;
       error?: string;
@@ -99,15 +148,21 @@ export function App() {
     if (response?.ok && response.pairingPayloadOut) {
       setPairingPayloadOut(response.pairingPayloadOut);
     } else {
-      setActionError(`Could not create invite: ${response?.error ?? 'unknown error'}`);
+      setActionError(
+        `Could not create invite: ${response?.error ?? 'unknown error'}`,
+      );
     }
   }
 
   async function handleSendTab(): Promise<void> {
     setActionError(null);
-    const response = (await browser.runtime.sendMessage({ type: 'send-tab' })) as { ok: boolean; error?: string };
+    const response = (await browser.runtime.sendMessage({
+      type: 'send-tab',
+    })) as { ok: boolean; error?: string };
     if (!response?.ok) {
-      setActionError(`Could not send tab: ${response?.error ?? 'unknown error'}`);
+      setActionError(
+        `Could not send tab: ${response?.error ?? 'unknown error'}`,
+      );
       throw new Error(response?.error ?? 'send failed');
     }
   }
@@ -121,11 +176,15 @@ export function App() {
 
   async function handleUnlock(passphrase: string): Promise<void> {
     setActionError(null);
-    const response = (await browser.runtime.sendMessage({ type: 'unlock', passphrase })) as {
+    const response = (await browser.runtime.sendMessage({
+      type: 'unlock',
+      passphrase,
+    })) as {
       ok: boolean;
       error?: string;
     };
-    if (!response?.ok) setActionError(`Could not unlock: ${response?.error ?? 'unknown error'}`);
+    if (!response?.ok)
+      setActionError(`Could not unlock: ${response?.error ?? 'unknown error'}`);
     await refresh();
   }
 
@@ -140,14 +199,20 @@ export function App() {
     await refresh();
   }
 
-  const stage: 'setup' | 'locked' | 'home' = !view.roomConfigured ? 'setup' : !view.unlocked ? 'locked' : 'home';
+  const stage: 'setup' | 'locked' | 'home' = !view.roomConfigured
+    ? 'setup'
+    : !view.unlocked
+      ? 'locked'
+      : 'home';
 
   return (
     <div className="popup">
       <Header connected={view.connected} showStatus={stage === 'home'} />
       <div className="body">
         {view.hasDecryptError && (
-          <Banner tone="error">Couldn't decrypt a received message — check your passphrase.</Banner>
+          <Banner tone="error">
+            Couldn't decrypt a received message — check your passphrase.
+          </Banner>
         )}
         {actionError && (
           <Banner tone="error" onDismiss={() => setActionError(null)}>
@@ -155,11 +220,21 @@ export function App() {
           </Banner>
         )}
         {pairingPayloadOut && (
-          <PairingCodeCard value={pairingPayloadOut} onDismiss={() => setPairingPayloadOut(null)} />
+          <PairingCodeCard
+            value={pairingPayloadOut}
+            onDismiss={() => setPairingPayloadOut(null)}
+          />
         )}
 
-        {stage === 'setup' && <SetupForm onCreate={(p, h) => void handleCreate(p, h)} onJoin={(p, payload) => void handleJoin(p, payload)} />}
-        {stage === 'locked' && <UnlockForm onUnlock={(p) => void handleUnlock(p)} />}
+        {stage === 'setup' && (
+          <SetupForm
+            onCreate={(p, h) => void handleCreate(p, h)}
+            onJoin={(p, payload) => void handleJoin(p, payload)}
+          />
+        )}
+        {stage === 'locked' && (
+          <UnlockForm onUnlock={(p) => void handleUnlock(p)} />
+        )}
         {stage === 'home' && (
           <Home
             pending={view.pending}

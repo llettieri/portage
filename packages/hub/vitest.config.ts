@@ -1,5 +1,8 @@
 import { defineConfig } from 'vitest/config';
-import { cloudflareTest, cloudflarePool } from '@cloudflare/vitest-pool-workers';
+import {
+  cloudflareTest,
+  cloudflarePool,
+} from '@cloudflare/vitest-pool-workers';
 
 export default defineConfig({
   plugins: [
@@ -12,7 +15,11 @@ export default defineConfig({
   ],
   test: {
     globals: true,
-    exclude: ['**/node_modules/**', '**/dist/**', '**/.{idea,git,cache,output,temp}/**'],
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/.{idea,git,cache,output,temp}/**',
+    ],
   },
   pool: cloudflarePool({
     wrangler: { configPath: './wrangler.toml' },

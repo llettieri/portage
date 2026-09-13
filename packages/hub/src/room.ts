@@ -11,7 +11,12 @@ import type {
   RelayFrame,
 } from 'protocol';
 import { isEchoableCloseCode } from './closeCodes.js';
-import { MAX_PAYLOAD_BYTES, MAX_QUEUE_DEPTH_PER_DEVICE, RATE_LIMIT_MAX_MESSAGES, RATE_LIMIT_WINDOW_MS } from './limits.js';
+import {
+  MAX_PAYLOAD_BYTES,
+  MAX_QUEUE_DEPTH_PER_DEVICE,
+  RATE_LIMIT_MAX_MESSAGES,
+  RATE_LIMIT_WINDOW_MS,
+} from './limits.js';
 import { hashToken, randomPairingCode, randomToken } from './tokens.js';
 
 const PAIRING_CODE_TTL_MS = 5 * 60 * 1000;
@@ -19,19 +24,6 @@ const QUEUE_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface Env {
   ROOM: DurableObjectNamespace;
-}
-
-// `cloudflare:test`'s `env` export is typed as `Cloudflare.Env`, which is normally
-// populated by running `wrangler types` to generate a `worker-configuration.d.ts`.
-// This project doesn't run that codegen step, so declare the binding here instead —
-// this is the same shape as `Env` above, just merged into the ambient namespace so
-// `room.test.ts` can do `env.ROOM.idFromName(...)`.
-declare global {
-  namespace Cloudflare {
-    interface Env {
-      ROOM: DurableObjectNamespace;
-    }
-  }
 }
 
 interface SocketAttachment {
@@ -78,14 +70,17 @@ export class Room implements DurableObject {
         created_at INTEGER NOT NULL
       )
     `);
-    this.state.storage.sql.exec('CREATE INDEX IF NOT EXISTS inbox_to_device_idx ON inbox (to_device)');
+    this.state.storage.sql.exec(
+      'CREATE INDEX IF NOT EXISTS inbox_to_device_idx ON inbox (to_device)',
+    );
   }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const sub = url.pathname.split('/').filter(Boolean).slice(2).join('/');
 
-    if (request.headers.get('Upgrade') === 'websocket') return this.handleUpgrade(request, url);
+    if (request.headers.get('Upgrade') === 'websocket')
+      return this.handleUpgrade(request, url);
 
     // The HTTP routes below are called cross-origin from a browser extension
     // (chrome-extension://…, moz-extension://…), which browsers subject to CORS.
@@ -108,26 +103,41 @@ export class Room implements DurableObject {
     try {
       response = await this.dispatchHttp(request, sub);
     } catch (error) {
-      response = new Response(`internal error: ${String(error)}`, { status: 500 });
+      response = new Response(`internal error: ${String(error)}`, {
+        status: 500,
+      });
     }
     response.headers.set('Access-Control-Allow-Origin', '*');
     return response;
   }
 
   private async dispatchHttp(request: Request, sub: string): Promise<Response> {
-    if (request.method === 'POST' && (sub === 'pair/issue' || sub === 'pair/consume' || sub === 'pair/revoke')) {
-      if (!this.checkRateLimit()) return new Response('rate limited', { status: 429 });
+    if (
+      request.method === 'POST' &&
+      (sub === 'pair/issue' || sub === 'pair/consume' || sub === 'pair/revoke')
+    ) {
+      if (!this.checkRateLimit())
+        return new Response('rate limited', { status: 429 });
     }
     if (request.method === 'POST') {
-      const contentLength = Number(request.headers.get('Content-Length') ?? '0');
-      if (contentLength > MAX_PAYLOAD_BYTES) return new Response('payload too large', { status: 413 });
+      const contentLength = Number(
+        request.headers.get('Content-Length') ?? '0',
+      );
+      if (contentLength > MAX_PAYLOAD_BYTES)
+        return new Response('payload too large', { status: 413 });
     }
-    if (request.method === 'POST' && sub === 'pair/issue') return this.handlePairIssue(request);
-    if (request.method === 'POST' && sub === 'pair/consume') return this.handlePairConsume(request);
-    if (request.method === 'POST' && sub === 'pair/revoke') return this.handlePairRevoke(request);
-    if (request.method === 'POST' && sub === 'inbox/drain') return this.handleInboxDrain(request);
-    if (request.method === 'POST' && sub === 'inbox/ack') return this.handleInboxAck(request);
-    if (sub === '') return new Response('expected websocket upgrade', { status: 426 });
+    if (request.method === 'POST' && sub === 'pair/issue')
+      return this.handlePairIssue(request);
+    if (request.method === 'POST' && sub === 'pair/consume')
+      return this.handlePairConsume(request);
+    if (request.method === 'POST' && sub === 'pair/revoke')
+      return this.handlePairRevoke(request);
+    if (request.method === 'POST' && sub === 'inbox/drain')
+      return this.handleInboxDrain(request);
+    if (request.method === 'POST' && sub === 'inbox/ack')
+      return this.handleInboxAck(request);
+    if (sub === '')
+      return new Response('expected websocket upgrade', { status: 426 });
     return new Response('not found', { status: 404 });
   }
 
@@ -147,7 +157,9 @@ export class Room implements DurableObject {
   }
 
   private deviceCount(): number {
-    const rows = this.state.storage.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM devices').toArray();
+    const rows = this.state.storage.sql
+      .exec<{ n: number }>('SELECT COUNT(*) AS n FROM devices')
+      .toArray();
     return Number(rows[0]?.n ?? 0);
   }
 
@@ -163,16 +175,27 @@ export class Room implements DurableObject {
     return token;
   }
 
-  private async checkBearerAuth(request: Request, deviceId: string): Promise<boolean> {
+  private async checkBearerAuth(
+    request: Request,
+    deviceId: string,
+  ): Promise<boolean> {
     const header = request.headers.get('Authorization') ?? '';
-    const token = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : '';
+    const token = header.startsWith('Bearer ')
+      ? header.slice('Bearer '.length)
+      : '';
     return this.isAuthorized(deviceId, token);
   }
 
-  private async isAuthorized(deviceId: string, token: string): Promise<boolean> {
+  private async isAuthorized(
+    deviceId: string,
+    token: string,
+  ): Promise<boolean> {
     if (!token) return false;
     const rows = this.state.storage.sql
-      .exec<DeviceRow>('SELECT token_hash AS tokenHash, revoked FROM devices WHERE device_id = ?', deviceId)
+      .exec<DeviceRow>(
+        'SELECT token_hash AS tokenHash, revoked FROM devices WHERE device_id = ?',
+        deviceId,
+      )
       .toArray();
     const row = rows[0];
     if (!row || row.revoked) return false;
@@ -197,13 +220,15 @@ export class Room implements DurableObject {
     );
 
     const response: PairIssueResponse = { code, expiresAt };
-    if (isBootstrap) response.deviceToken = await this.registerDevice(body.device);
+    if (isBootstrap)
+      response.deviceToken = await this.registerDevice(body.device);
     return Response.json(response);
   }
 
   private async handlePairConsume(request: Request): Promise<Response> {
     const body = (await request.json()) as PairConsumeRequest;
-    if (!body.code || !body.device) return new Response('missing code or device', { status: 400 });
+    if (!body.code || !body.device)
+      return new Response('missing code or device', { status: 400 });
 
     const existing = this.state.storage.sql
       .exec('SELECT 1 FROM devices WHERE device_id = ?', body.device)
@@ -213,14 +238,20 @@ export class Room implements DurableObject {
     }
 
     const rows = this.state.storage.sql
-      .exec<PairingCodeRow>('SELECT expires_at AS expiresAt, used FROM pairing_codes WHERE code = ?', body.code)
+      .exec<PairingCodeRow>(
+        'SELECT expires_at AS expiresAt, used FROM pairing_codes WHERE code = ?',
+        body.code,
+      )
       .toArray();
     const row = rows[0];
     if (!row || row.used || row.expiresAt < Date.now()) {
       return new Response('pairing code invalid or expired', { status: 403 });
     }
 
-    this.state.storage.sql.exec('UPDATE pairing_codes SET used = 1 WHERE code = ?', body.code);
+    this.state.storage.sql.exec(
+      'UPDATE pairing_codes SET used = 1 WHERE code = ?',
+      body.code,
+    );
     const deviceToken = await this.registerDevice(body.device);
     const response: PairConsumeResponse = { deviceToken };
     return Response.json(response);
@@ -231,10 +262,18 @@ export class Room implements DurableObject {
     if (!body.device) return new Response('missing device', { status: 400 });
 
     const authHeader = request.headers.get('Authorization') ?? '';
-    const callerToken = authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : '';
+    const callerToken = authHeader.startsWith('Bearer ')
+      ? authHeader.slice('Bearer '.length)
+      : '';
     const rows = this.state.storage.sql
-      .exec('SELECT device_id AS deviceId, token_hash AS tokenHash, revoked FROM devices WHERE revoked = 0')
-      .toArray() as Array<{ deviceId: string; tokenHash: string; revoked: number }>;
+      .exec(
+        'SELECT device_id AS deviceId, token_hash AS tokenHash, revoked FROM devices WHERE revoked = 0',
+      )
+      .toArray() as Array<{
+      deviceId: string;
+      tokenHash: string;
+      revoked: number;
+    }>;
 
     let callerAuthorized = false;
     for (const row of rows) {
@@ -243,9 +282,13 @@ export class Room implements DurableObject {
         break;
       }
     }
-    if (!callerToken || !callerAuthorized) return new Response('unauthorized', { status: 401 });
+    if (!callerToken || !callerAuthorized)
+      return new Response('unauthorized', { status: 401 });
 
-    this.state.storage.sql.exec('UPDATE devices SET revoked = 1 WHERE device_id = ?', body.device);
+    this.state.storage.sql.exec(
+      'UPDATE devices SET revoked = 1 WHERE device_id = ?',
+      body.device,
+    );
     return new Response(null, { status: 200 });
   }
 
@@ -269,9 +312,12 @@ export class Room implements DurableObject {
     }
 
     if (envelope.to === 'all') {
-      const senderAttachment = sender.deserializeAttachment() as SocketAttachment | null;
+      const senderAttachment =
+        sender.deserializeAttachment() as SocketAttachment | null;
       const deviceRows = this.state.storage.sql
-        .exec<{ deviceId: string }>('SELECT device_id AS deviceId FROM devices WHERE revoked = 0')
+        .exec<{ deviceId: string }>(
+          'SELECT device_id AS deviceId FROM devices WHERE revoked = 0',
+        )
         .toArray();
       for (const row of deviceRows) {
         if (row.deviceId === senderAttachment?.deviceId) continue;
@@ -297,7 +343,9 @@ export class Room implements DurableObject {
 
   private checkRateLimit(): boolean {
     const now = Date.now();
-    this.messageTimestamps = this.messageTimestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+    this.messageTimestamps = this.messageTimestamps.filter(
+      (t) => now - t < RATE_LIMIT_WINDOW_MS,
+    );
     if (this.messageTimestamps.length >= RATE_LIMIT_MAX_MESSAGES) return false;
     this.messageTimestamps.push(now);
     return true;
@@ -312,7 +360,10 @@ export class Room implements DurableObject {
   }
 
   private expireOldInboxRows(): void {
-    this.state.storage.sql.exec('DELETE FROM inbox WHERE created_at < ?', Date.now() - QUEUE_EXPIRY_MS);
+    this.state.storage.sql.exec(
+      'DELETE FROM inbox WHERE created_at < ?',
+      Date.now() - QUEUE_EXPIRY_MS,
+    );
   }
 
   private enqueue(toDeviceId: string, envelope: Envelope): string | null {
@@ -336,24 +387,37 @@ export class Room implements DurableObject {
   private async handleInboxDrain(request: Request): Promise<Response> {
     const body = (await request.json()) as InboxDrainRequest;
     if (!body.device) return new Response('missing device', { status: 400 });
-    if (!(await this.checkBearerAuth(request, body.device))) return new Response('unauthorized', { status: 401 });
+    if (!(await this.checkBearerAuth(request, body.device)))
+      return new Response('unauthorized', { status: 401 });
 
     this.expireOldInboxRows();
     const rows = this.state.storage.sql
-      .exec('SELECT id, envelope FROM inbox WHERE to_device = ? ORDER BY created_at ASC', body.device)
+      .exec(
+        'SELECT id, envelope FROM inbox WHERE to_device = ? ORDER BY created_at ASC',
+        body.device,
+      )
       .toArray() as Array<{ id: string; envelope: string }>;
-    const items: RelayFrame[] = rows.map((row) => ({ id: row.id, envelope: JSON.parse(row.envelope) as Envelope }));
+    const items: RelayFrame[] = rows.map((row) => ({
+      id: row.id,
+      envelope: JSON.parse(row.envelope) as Envelope,
+    }));
     return Response.json({ items } satisfies InboxDrainResponse);
   }
 
   private async handleInboxAck(request: Request): Promise<Response> {
     const body = (await request.json()) as InboxAckRequest;
     if (!body.device) return new Response('missing device', { status: 400 });
-    if (!Array.isArray(body.ids)) return new Response('missing or invalid ids', { status: 400 });
-    if (!(await this.checkBearerAuth(request, body.device))) return new Response('unauthorized', { status: 401 });
+    if (!Array.isArray(body.ids))
+      return new Response('missing or invalid ids', { status: 400 });
+    if (!(await this.checkBearerAuth(request, body.device)))
+      return new Response('unauthorized', { status: 401 });
 
     for (const id of body.ids) {
-      this.state.storage.sql.exec('DELETE FROM inbox WHERE id = ? AND to_device = ?', id, body.device);
+      this.state.storage.sql.exec(
+        'DELETE FROM inbox WHERE id = ? AND to_device = ?',
+        id,
+        body.device,
+      );
     }
     return new Response(null, { status: 200 });
   }

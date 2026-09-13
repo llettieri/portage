@@ -11,7 +11,11 @@ export function toHttpBase(hubUrl: string): string {
   return url.toString().replace(/\/$/, '');
 }
 
-export function buildConnectUrl(hubUrl: string, deviceId: string, token: string): string {
+export function buildConnectUrl(
+  hubUrl: string,
+  deviceId: string,
+  token: string,
+): string {
   const url = new URL(hubUrl);
   url.searchParams.set('device', deviceId);
   url.searchParams.set('token', token);

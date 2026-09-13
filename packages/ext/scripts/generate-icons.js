@@ -14,17 +14,26 @@ async function generateIcons() {
 
   for (const size of [...new Set([...EXTENSION_SIZES, ...ACTION_SIZES])]) {
     await sharp(sourceBuffer, { density: 384 })
-      .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .resize(size, size, {
+        fit: 'contain',
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
       .png()
       .toFile(path.join(OUTPUT_DIR, `_${size}.png`));
   }
 
   for (const size of EXTENSION_SIZES) {
-    fs.copyFileSync(path.join(OUTPUT_DIR, `_${size}.png`), path.join(OUTPUT_DIR, `icon${size}.png`));
+    fs.copyFileSync(
+      path.join(OUTPUT_DIR, `_${size}.png`),
+      path.join(OUTPUT_DIR, `icon${size}.png`),
+    );
     console.log(`Generated icon${size}.png`);
   }
   for (const size of ACTION_SIZES) {
-    fs.copyFileSync(path.join(OUTPUT_DIR, `_${size}.png`), path.join(OUTPUT_DIR, `action${size}.png`));
+    fs.copyFileSync(
+      path.join(OUTPUT_DIR, `_${size}.png`),
+      path.join(OUTPUT_DIR, `action${size}.png`),
+    );
     console.log(`Generated action${size}.png`);
   }
   for (const size of [...new Set([...EXTENSION_SIZES, ...ACTION_SIZES])]) {

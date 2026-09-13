@@ -1,8 +1,15 @@
-import type { EnvelopeKind, HandoffPayload, PresencePayload, StashItem } from './types.js';
+import type {
+  EnvelopeKind,
+  HandoffPayload,
+  PresencePayload,
+  StashItem,
+} from './types.js';
 
 export class InvalidPayloadError extends Error {
   constructor(kind: EnvelopeKind) {
-    super(`decrypted payload does not match the expected shape for kind "${kind}"`);
+    super(
+      `decrypted payload does not match the expected shape for kind "${kind}"`,
+    );
     this.name = 'InvalidPayloadError';
   }
 }
@@ -12,14 +19,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function isHandoffPayload(value: unknown): value is HandoffPayload {
-  return isRecord(value) && typeof value.url === 'string' && typeof value.title === 'string';
+  return (
+    isRecord(value) &&
+    typeof value.url === 'string' &&
+    typeof value.title === 'string'
+  );
 }
 
 export function isPresencePayload(value: unknown): value is PresencePayload {
   return (
     isRecord(value) &&
     Array.isArray(value.tabs) &&
-    value.tabs.every((tab) => isRecord(tab) && typeof tab.url === 'string' && typeof tab.title === 'string')
+    value.tabs.every(
+      (tab) =>
+        isRecord(tab) &&
+        typeof tab.url === 'string' &&
+        typeof tab.title === 'string',
+    )
   );
 }
 
@@ -32,7 +48,9 @@ export function isStashList(value: unknown): value is StashItem[] {
         typeof item.id === 'string' &&
         typeof item.url === 'string' &&
         typeof item.title === 'string' &&
-        (item.origin === 'arc' || item.origin === 'zen' || item.origin === 'sidebar') &&
+        (item.origin === 'arc' ||
+          item.origin === 'zen' ||
+          item.origin === 'sidebar') &&
         typeof item.addedAt === 'number',
     )
   );

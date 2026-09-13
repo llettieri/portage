@@ -8,7 +8,11 @@ export interface EncryptedPayload {
   ciphertext: string;
 }
 
-export async function deriveKey(passphrase: string, salt: Uint8Array, iterations: number): Promise<CryptoKey> {
+export async function deriveKey(
+  passphrase: string,
+  salt: Uint8Array,
+  iterations: number,
+): Promise<CryptoKey> {
   const baseKey = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(passphrase),
@@ -48,7 +52,11 @@ export async function decrypt<T>(
   const iv = fromBase64(envelope.iv);
   const ciphertext = fromBase64(envelope.ciphertext);
   const plaintext = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: iv as BufferSource, additionalData: additionalData as BufferSource },
+    {
+      name: 'AES-GCM',
+      iv: iv as BufferSource,
+      additionalData: additionalData as BufferSource,
+    },
     key,
     ciphertext as BufferSource,
   );

@@ -48,18 +48,35 @@ async function resolveCryptoKey(): Promise<CryptoKey | null> {
   const passphrase = await getStoredPassphrase();
   const config = await getRoomConfig();
   if (!passphrase || !config) return null;
-  cachedCryptoKey = await deriveKey(passphrase, fromBase64(config.salt), config.iterations);
+  cachedCryptoKey = await deriveKey(
+    passphrase,
+    fromBase64(config.salt),
+    config.iterations,
+  );
   return cachedCryptoKey;
 }
 
-async function computeKeyCheck(key: CryptoKey): Promise<{ iv: string; ciphertext: string }> {
-  const { iv, ciphertext } = await encrypt(key, KEY_CHECK_VALUE, new Uint8Array());
+async function computeKeyCheck(
+  key: CryptoKey,
+): Promise<{ iv: string; ciphertext: string }> {
+  const { iv, ciphertext } = await encrypt(
+    key,
+    KEY_CHECK_VALUE,
+    new Uint8Array(),
+  );
   return { iv, ciphertext };
 }
 
-async function verifyKeyCheck(key: CryptoKey, keyCheck: { iv: string; ciphertext: string }): Promise<boolean> {
+async function verifyKeyCheck(
+  key: CryptoKey,
+  keyCheck: { iv: string; ciphertext: string },
+): Promise<boolean> {
   try {
-    const value = await decrypt<string>(key, { iv: keyCheck.iv, ciphertext: keyCheck.ciphertext }, new Uint8Array());
+    const value = await decrypt<string>(
+      key,
+      { iv: keyCheck.iv, ciphertext: keyCheck.ciphertext },
+      new Uint8Array(),
+    );
     return value === KEY_CHECK_VALUE;
   } catch {
     return false;
@@ -67,12 +84,15 @@ async function verifyKeyCheck(key: CryptoKey, keyCheck: { iv: string; ciphertext
 }
 
 function randomHex(byteLength: number): string {
-  return Array.from(crypto.getRandomValues(new Uint8Array(byteLength)), (b) => b.toString(16).padStart(2, '0')).join(
-    '',
-  );
+  return Array.from(crypto.getRandomValues(new Uint8Array(byteLength)), (b) =>
+    b.toString(16).padStart(2, '0'),
+  ).join('');
 }
 
-async function setupCreate(passphrase: string, hubBaseUrl: string): Promise<{ pairingPayloadOut: string }> {
+async function setupCreate(
+  passphrase: string,
+  hubBaseUrl: string,
+): Promise<{ pairingPayloadOut: string }> {
   const deviceId = await getDeviceId();
   const roomId = randomHex(16);
   const salt = crypto.getRandomValues(new Uint8Array(16));
@@ -84,16 +104,34 @@ async function setupCreate(passphrase: string, hubBaseUrl: string): Promise<{ pa
     body: JSON.stringify({ device: deviceId }),
   });
   if (!issueRes.ok) throw new Error(`pair/issue failed: ${issueRes.status}`);
-  const { code, deviceToken } = (await issueRes.json()) as { code: string; deviceToken: string };
-  if (!deviceToken) throw new Error('pair/issue did not bootstrap a device token');
+  const { code, deviceToken } = (await issueRes.json()) as {
+    code: string;
+    deviceToken: string;
+  };
+  if (!deviceToken)
+    throw new Error('pair/issue did not bootstrap a device token');
 
   cachedCryptoKey = await deriveKey(passphrase, salt, iterations);
   const keyCheck = await computeKeyCheck(cachedCryptoKey);
-  const config: RoomConfig = { roomId, hubUrl, salt: toBase64(salt), iterations, deviceToken, keyCheck };
+  const config: RoomConfig = {
+    roomId,
+    hubUrl,
+    salt: toBase64(salt),
+    iterations,
+    deviceToken,
+    keyCheck,
+  };
   await setRoomConfig(config);
   await setStoredPassphrase(passphrase);
 
-  const pairingPayloadOut = encodePairingPayload({ v: 1, room: roomId, salt: config.salt, iterations, code, hubUrl });
+  const pairingPayloadOut = encodePairingPayload({
+    v: 1,
+    room: roomId,
+    salt: config.salt,
+    iterations,
+    code,
+    hubUrl,
+  });
   return { pairingPayloadOut };
 }
 
@@ -121,7 +159,10 @@ async function inviteDevice(): Promise<{ pairingPayloadOut: string }> {
   return { pairingPayloadOut };
 }
 
-async function setupJoin(passphrase: string, pairingPayload: string): Promise<void> {
+async function setupJoin(
+  passphrase: string,
+  pairingPayload: string,
+): Promise<void> {
   const deviceId = await getDeviceId();
   const payload = decodePairingPayload(pairingPayload);
 
@@ -129,10 +170,15 @@ async function setupJoin(passphrase: string, pairingPayload: string): Promise<vo
     method: 'POST',
     body: JSON.stringify({ code: payload.code, device: deviceId }),
   });
-  if (!consumeRes.ok) throw new Error(`pair/consume failed: ${consumeRes.status}`);
+  if (!consumeRes.ok)
+    throw new Error(`pair/consume failed: ${consumeRes.status}`);
   const { deviceToken } = (await consumeRes.json()) as { deviceToken: string };
 
-  cachedCryptoKey = await deriveKey(passphrase, fromBase64(payload.salt), payload.iterations);
+  cachedCryptoKey = await deriveKey(
+    passphrase,
+    fromBase64(payload.salt),
+    payload.iterations,
+  );
   const keyCheck = await computeKeyCheck(cachedCryptoKey);
   const config: RoomConfig = {
     roomId: payload.room,
@@ -149,7 +195,11 @@ async function setupJoin(passphrase: string, pairingPayload: string): Promise<vo
 async function unlock(passphrase: string): Promise<void> {
   const config = await getRoomConfig();
   if (!config) throw new Error('no room configured');
-  const candidateKey = await deriveKey(passphrase, fromBase64(config.salt), config.iterations);
+  const candidateKey = await deriveKey(
+    passphrase,
+    fromBase64(config.salt),
+    config.iterations,
+  );
   if (!(await verifyKeyCheck(candidateKey, config.keyCheck))) {
     throw new Error('wrong passphrase');
   }
@@ -186,7 +236,9 @@ async function doConnect(): Promise<void> {
   if (!config) return;
   const deviceId = await getDeviceId();
 
-  const ws = new WebSocket(buildConnectUrl(config.hubUrl, deviceId, config.deviceToken));
+  const ws = new WebSocket(
+    buildConnectUrl(config.hubUrl, deviceId, config.deviceToken),
+  );
   socket = ws;
 
   ws.addEventListener('close', () => {
@@ -197,7 +249,10 @@ async function doConnect(): Promise<void> {
     setTimeout(() => void connect().catch(() => {}), delay);
   });
   ws.addEventListener('error', () => ws.close());
-  ws.addEventListener('message', (event) => void handleIncomingFrame(event.data));
+  ws.addEventListener(
+    'message',
+    (event) => void handleIncomingFrame(event.data),
+  );
 
   // Resolve only on 'open' — a socket that closes before ever opening (hub unreachable,
   // bad URL, unauthorized) must reject, not resolve, or callers see a "connected" promise
@@ -213,7 +268,11 @@ async function doConnect(): Promise<void> {
       },
       { once: true },
     );
-    ws.addEventListener('close', () => reject(new Error('socket closed before opening')), { once: true });
+    ws.addEventListener(
+      'close',
+      () => reject(new Error('socket closed before opening')),
+      { once: true },
+    );
   });
 }
 
@@ -252,7 +311,11 @@ async function drainInbox(): Promise<void> {
       try {
         if (item.envelope.kind === 'handoff') {
           const handoff = payload as HandoffPayload;
-          await addPendingHandoff({ id: item.id, url: handoff.url, title: handoff.title });
+          await addPendingHandoff({
+            id: item.id,
+            url: handoff.url,
+            title: handoff.title,
+          });
         }
         if (item.id) ackIds.push(item.id);
       } catch {
@@ -302,21 +365,30 @@ async function handleIncomingFrame(data: unknown): Promise<void> {
   // The popup opens it, only in direct response to the human clicking "Open".
   if (frame.envelope.kind === 'handoff') {
     const handoff = payload as HandoffPayload;
-    await addPendingHandoff({ id: frame.id, url: handoff.url, title: handoff.title });
+    await addPendingHandoff({
+      id: frame.id,
+      url: handoff.url,
+      title: handoff.title,
+    });
   }
 }
 
 async function sendCurrentTab(to: string): Promise<void> {
   await connect();
-  if (!socket || socket.readyState !== WebSocket.OPEN) throw new Error('not connected to hub');
+  if (!socket || socket.readyState !== WebSocket.OPEN)
+    throw new Error('not connected to hub');
   const cryptoKey = await resolveCryptoKey();
-  if (!cryptoKey) throw new Error('room is locked — unlock with your passphrase first');
+  if (!cryptoKey)
+    throw new Error('room is locked — unlock with your passphrase first');
   const config = await getRoomConfig();
   if (!config) throw new Error('no room configured');
   const deviceId = await getDeviceId();
   // Neither an MV3 service worker nor an MV2 background page has a guaranteed "current
   // window" — currentWindow silently matches nothing in either context.
-  const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
+  const [tab] = await browser.tabs.query({
+    active: true,
+    lastFocusedWindow: true,
+  });
   if (!tab?.url) throw new Error('no active tab with a URL found');
 
   const envelope = await buildEnvelope(
@@ -331,7 +403,9 @@ export default defineBackground({
   persistent: true,
   main() {
     browser.runtime.onStartup.addListener(() => void connect().catch(() => {}));
-    browser.runtime.onInstalled.addListener(() => void connect().catch(() => {}));
+    browser.runtime.onInstalled.addListener(
+      () => void connect().catch(() => {}),
+    );
     browser.alarms.create(RECONNECT_ALARM, { periodInMinutes: 1 });
     browser.alarms.onAlarm.addListener((alarm) => {
       if (alarm.name === RECONNECT_ALARM) {
@@ -342,33 +416,56 @@ export default defineBackground({
 
     browser.runtime.onMessage.addListener(
       (
-        message: { type?: string; passphrase?: string; hubBaseUrl?: string; pairingPayload?: string },
+        message: {
+          type?: string;
+          passphrase?: string;
+          hubBaseUrl?: string;
+          pairingPayload?: string;
+        },
         _sender,
         sendResponse,
       ) => {
-        if (message?.type === 'setup-create' && message.passphrase && message.hubBaseUrl) {
+        if (
+          message?.type === 'setup-create' &&
+          message.passphrase &&
+          message.hubBaseUrl
+        ) {
           void setupCreate(message.passphrase, message.hubBaseUrl)
-            .then((result) => connect().then(() => sendResponse({ ok: true, ...result })))
-            .catch((error: unknown) => sendResponse({ ok: false, error: String(error) }));
+            .then((result) =>
+              connect().then(() => sendResponse({ ok: true, ...result })),
+            )
+            .catch((error: unknown) =>
+              sendResponse({ ok: false, error: String(error) }),
+            );
           return true;
         }
-        if (message?.type === 'setup-join' && message.passphrase && message.pairingPayload) {
+        if (
+          message?.type === 'setup-join' &&
+          message.passphrase &&
+          message.pairingPayload
+        ) {
           void setupJoin(message.passphrase, message.pairingPayload)
             .then(() => connect())
             .then(() => sendResponse({ ok: true }))
-            .catch((error: unknown) => sendResponse({ ok: false, error: String(error) }));
+            .catch((error: unknown) =>
+              sendResponse({ ok: false, error: String(error) }),
+            );
           return true;
         }
         if (message?.type === 'invite-device') {
           void inviteDevice()
             .then((result) => sendResponse({ ok: true, ...result }))
-            .catch((error: unknown) => sendResponse({ ok: false, error: String(error) }));
+            .catch((error: unknown) =>
+              sendResponse({ ok: false, error: String(error) }),
+            );
           return true;
         }
         if (message?.type === 'send-tab') {
           void sendCurrentTab('all')
             .then(() => sendResponse({ ok: true }))
-            .catch((error: unknown) => sendResponse({ ok: false, error: String(error) }));
+            .catch((error: unknown) =>
+              sendResponse({ ok: false, error: String(error) }),
+            );
           return true;
         }
         if (message?.type === 'drain') {
@@ -387,15 +484,21 @@ export default defineBackground({
             // instead of waiting for the next alarm tick to surface anything queued.
             .then(() => drainInbox())
             .then(() => sendResponse({ ok: true }))
-            .catch((error: unknown) => sendResponse({ ok: false, error: String(error) }));
+            .catch((error: unknown) =>
+              sendResponse({ ok: false, error: String(error) }),
+            );
           return true;
         }
         if (message?.type === 'is-unlocked') {
-          void resolveCryptoKey().then((key) => sendResponse({ unlocked: !!key }));
+          void resolveCryptoKey().then((key) =>
+            sendResponse({ unlocked: !!key }),
+          );
           return true;
         }
         if (message?.type === 'is-connected') {
-          sendResponse({ connected: socket !== null && socket.readyState === WebSocket.OPEN });
+          sendResponse({
+            connected: socket !== null && socket.readyState === WebSocket.OPEN,
+          });
           return true;
         }
         return false;

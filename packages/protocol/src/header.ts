@@ -6,8 +6,13 @@ export function serializeHeader(header: EnvelopeHeader): Uint8Array {
       throw new Error('EnvelopeHeader field contains a NUL byte');
     }
   }
-  const canonical = [String(header.v), header.room, header.device, header.to, header.kind, String(header.ts)].join(
-    '\0',
-  );
+  const canonical = [
+    String(header.v),
+    header.room,
+    header.device,
+    header.to,
+    header.kind,
+    String(header.ts),
+  ].join('\0');
   return new TextEncoder().encode(canonical);
 }

@@ -1,13 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { CURRENT_PBKDF2_ITERATIONS, decrypt, deriveKey, encrypt } from './crypto.js';
+import {
+  CURRENT_PBKDF2_ITERATIONS,
+  decrypt,
+  deriveKey,
+  encrypt,
+} from './crypto.js';
 
 const AAD = new TextEncoder().encode('room1\0device1\0all\0handoff\0' + '1');
-const OTHER_AAD = new TextEncoder().encode('room1\0device1\0all\0stash\0' + '1');
+const OTHER_AAD = new TextEncoder().encode(
+  'room1\0device1\0all\0stash\0' + '1',
+);
 
 describe('crypto round-trip', () => {
   it('decrypts a payload encrypted with the same passphrase, salt, and AAD', async () => {
     const salt = crypto.getRandomValues(new Uint8Array(16));
-    const key = await deriveKey('correct horse battery staple', salt, CURRENT_PBKDF2_ITERATIONS);
+    const key = await deriveKey(
+      'correct horse battery staple',
+      salt,
+      CURRENT_PBKDF2_ITERATIONS,
+    );
     const payload = { url: 'https://example.com', title: 'Example' };
 
     const envelope = await encrypt(key, payload, AAD);
@@ -18,7 +29,11 @@ describe('crypto round-trip', () => {
 
   it('uses a fresh IV per message', async () => {
     const salt = crypto.getRandomValues(new Uint8Array(16));
-    const key = await deriveKey('correct horse battery staple', salt, CURRENT_PBKDF2_ITERATIONS);
+    const key = await deriveKey(
+      'correct horse battery staple',
+      salt,
+      CURRENT_PBKDF2_ITERATIONS,
+    );
 
     const first = await encrypt(key, { n: 1 }, AAD);
     const second = await encrypt(key, { n: 1 }, AAD);
@@ -28,8 +43,16 @@ describe('crypto round-trip', () => {
 
   it('fails to decrypt with the wrong passphrase', async () => {
     const salt = crypto.getRandomValues(new Uint8Array(16));
-    const key = await deriveKey('correct horse battery staple', salt, CURRENT_PBKDF2_ITERATIONS);
-    const wrongKey = await deriveKey('wrong passphrase', salt, CURRENT_PBKDF2_ITERATIONS);
+    const key = await deriveKey(
+      'correct horse battery staple',
+      salt,
+      CURRENT_PBKDF2_ITERATIONS,
+    );
+    const wrongKey = await deriveKey(
+      'wrong passphrase',
+      salt,
+      CURRENT_PBKDF2_ITERATIONS,
+    );
     const envelope = await encrypt(key, { secret: true }, AAD);
 
     await expect(decrypt(wrongKey, envelope, AAD)).rejects.toThrow();
@@ -37,7 +60,11 @@ describe('crypto round-trip', () => {
 
   it('fails to decrypt when the bound header (AAD) does not match', async () => {
     const salt = crypto.getRandomValues(new Uint8Array(16));
-    const key = await deriveKey('correct horse battery staple', salt, CURRENT_PBKDF2_ITERATIONS);
+    const key = await deriveKey(
+      'correct horse battery staple',
+      salt,
+      CURRENT_PBKDF2_ITERATIONS,
+    );
     const envelope = await encrypt(key, { secret: true }, AAD);
 
     await expect(decrypt(key, envelope, OTHER_AAD)).rejects.toThrow();
@@ -49,8 +76,16 @@ describe('crypto round-trip', () => {
 
   it('fails to decrypt when the iteration count used to derive the key differs', async () => {
     const salt = crypto.getRandomValues(new Uint8Array(16));
-    const key = await deriveKey('correct horse battery staple', salt, CURRENT_PBKDF2_ITERATIONS);
-    const otherIterationsKey = await deriveKey('correct horse battery staple', salt, 250_000);
+    const key = await deriveKey(
+      'correct horse battery staple',
+      salt,
+      CURRENT_PBKDF2_ITERATIONS,
+    );
+    const otherIterationsKey = await deriveKey(
+      'correct horse battery staple',
+      salt,
+      250_000,
+    );
     const envelope = await encrypt(key, { secret: true }, AAD);
 
     await expect(decrypt(otherIterationsKey, envelope, AAD)).rejects.toThrow();

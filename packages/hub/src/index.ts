@@ -1,5 +1,4 @@
-import { Room } from './room.js';
-import type { Env } from './room.js';
+import { Room, type Env } from './room.js';
 
 export { Room };
 

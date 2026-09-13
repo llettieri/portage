@@ -41,10 +41,15 @@
 }
 
 body {
-  @apply m-0 w-[380px] max-h-[560px] overflow-y-auto antialiased;
+  @apply m-0 max-h-[560px] w-[380px] overflow-y-auto antialiased;
   background: var(--pg-bg);
   color: var(--pg-text);
-  font: 13px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font:
+    13px/1.45 -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
 }
 
 @layer components {
@@ -64,18 +69,18 @@ body {
   }
 
   .trail-glyph {
-    @apply inline-flex items-center flex-shrink-0;
+    @apply inline-flex flex-shrink-0 items-center;
     color: var(--pg-accent);
   }
 
   .status-pill {
-    @apply flex items-center gap-[5px] rounded-full py-[3px] pl-[7px] pr-[9px] text-[11.5px] font-semibold;
+    @apply flex items-center gap-[5px] rounded-full py-[3px] pr-[9px] pl-[7px] text-[11.5px] font-semibold;
     background: var(--pg-surface-sunken);
     color: var(--pg-text-muted);
   }
 
   .status-dot {
-    @apply w-1.5 h-1.5 rounded-full flex-shrink-0;
+    @apply h-1.5 w-1.5 flex-shrink-0 rounded-full;
     background: var(--pg-danger);
   }
 
@@ -127,7 +132,7 @@ body {
   }
 
   textarea.input {
-    @apply resize-y font-sans min-h-[52px];
+    @apply min-h-[52px] resize-y font-sans;
   }
 
   .password-row {
@@ -139,7 +144,7 @@ body {
   }
 
   .reveal-toggle {
-    @apply absolute right-1 top-1/2 -translate-y-1/2 w-[26px] h-[26px] flex items-center justify-center rounded-[var(--pg-radius-sm)] bg-transparent border-0 cursor-pointer;
+    @apply absolute top-1/2 right-1 flex h-[26px] w-[26px] -translate-y-1/2 cursor-pointer items-center justify-center rounded-[var(--pg-radius-sm)] border-0 bg-transparent;
     color: var(--pg-text-muted);
   }
 
@@ -153,11 +158,11 @@ body {
   }
 
   .switch {
-    @apply relative w-[30px] h-[18px] flex-shrink-0;
+    @apply relative h-[18px] w-[30px] flex-shrink-0;
   }
 
   .switch input {
-    @apply absolute inset-0 opacity-0 m-0 cursor-pointer;
+    @apply absolute inset-0 m-0 cursor-pointer opacity-0;
   }
 
   .switch-track {
@@ -194,7 +199,7 @@ body {
   /* ---------- Buttons ---------- */
 
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 w-full rounded-[var(--pg-radius-sm)] border border-transparent px-3 py-2.5 font-semibold text-[13px] cursor-pointer transition-[transform,filter,background] duration-[120ms] ease-out;
+    @apply inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-[var(--pg-radius-sm)] border border-transparent px-3 py-2.5 text-[13px] font-semibold transition-[transform,filter,background] duration-[120ms] ease-out;
     font-family: inherit;
   }
 
@@ -232,7 +237,7 @@ body {
   }
 
   .btn-ghost {
-    @apply bg-transparent w-auto px-2 py-1.5;
+    @apply w-auto bg-transparent px-2 py-1.5;
     color: var(--pg-text-muted);
   }
 
@@ -242,7 +247,7 @@ body {
   }
 
   .btn-danger-text {
-    @apply bg-transparent w-auto px-0.5 py-1 font-medium text-[12.5px];
+    @apply w-auto bg-transparent px-0.5 py-1 text-[12.5px] font-medium;
     color: var(--pg-danger);
   }
 
@@ -253,12 +258,12 @@ body {
   /* ---------- Segmented control ---------- */
 
   .segmented {
-    @apply flex p-[3px] rounded-[var(--pg-radius-sm)] gap-[3px];
+    @apply flex gap-[3px] rounded-[var(--pg-radius-sm)] p-[3px];
     background: var(--pg-surface-sunken);
   }
 
   .segmented button {
-    @apply flex-1 border-0 bg-transparent font-semibold text-[12.5px] cursor-pointer px-2 py-1.5 rounded-[4px];
+    @apply flex-1 cursor-pointer rounded-[4px] border-0 bg-transparent px-2 py-1.5 text-[12.5px] font-semibold;
     font-family: inherit;
     color: var(--pg-text-muted);
   }
@@ -278,7 +283,7 @@ body {
   /* ---------- Banners ---------- */
 
   .banner {
-    @apply flex items-start gap-2 px-2.5 py-2.5 rounded-[var(--pg-radius-sm)] text-[12.5px] leading-[1.4];
+    @apply flex items-start gap-2 rounded-[var(--pg-radius-sm)] px-2.5 py-2.5 text-[12.5px] leading-[1.4];
   }
 
   .banner-error {
@@ -291,7 +296,7 @@ body {
   }
 
   .banner-dismiss {
-    @apply bg-transparent border-0 opacity-70 cursor-pointer p-0 flex-shrink-0 flex;
+    @apply flex flex-shrink-0 cursor-pointer border-0 bg-transparent p-0 opacity-70;
     color: inherit;
   }
 
@@ -312,8 +317,9 @@ body {
   }
 
   .code-block {
-    @apply text-[11.5px] leading-[1.5] break-all rounded-[var(--pg-radius-sm)] p-2 max-h-[70px] overflow-y-auto;
-    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+    @apply max-h-[70px] overflow-y-auto rounded-[var(--pg-radius-sm)] p-2 text-[11.5px] leading-[1.5] break-all;
+    font-family:
+      ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
     background: var(--pg-surface);
     border: 1px solid var(--pg-border);
   }
@@ -326,36 +332,36 @@ body {
   /* ---------- Received list ---------- */
 
   .received-list {
-    @apply flex flex-col gap-1.5 max-h-[220px] overflow-y-auto;
+    @apply flex max-h-[220px] flex-col gap-1.5 overflow-y-auto;
   }
 
   .received-item {
-    @apply flex items-center gap-[9px] px-[9px] py-2 rounded-[var(--pg-radius-sm)];
+    @apply flex items-center gap-[9px] rounded-[var(--pg-radius-sm)] px-[9px] py-2;
     border: 1px solid var(--pg-border);
     background: var(--pg-surface);
   }
 
   .received-favicon {
-    @apply flex-shrink-0 w-[22px] h-[22px] rounded-md flex items-center justify-center text-[11px] font-bold;
+    @apply flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-md text-[11px] font-bold;
     background: var(--pg-accent-soft);
     color: var(--pg-accent-strong);
   }
 
   .received-body {
-    @apply flex-1 min-w-0;
+    @apply min-w-0 flex-1;
   }
 
   .received-title {
-    @apply font-semibold text-[12.5px] whitespace-nowrap overflow-hidden text-ellipsis;
+    @apply overflow-hidden text-[12.5px] font-semibold text-ellipsis whitespace-nowrap;
   }
 
   .received-url {
-    @apply text-[11.5px] whitespace-nowrap overflow-hidden text-ellipsis;
+    @apply overflow-hidden text-[11.5px] text-ellipsis whitespace-nowrap;
     color: var(--pg-text-muted);
   }
 
   .empty-state {
-    @apply px-2.5 py-[18px] text-center text-[12.5px] rounded-[var(--pg-radius-md)];
+    @apply rounded-[var(--pg-radius-md)] px-2.5 py-[18px] text-center text-[12.5px];
     color: var(--pg-text-muted);
     border: 1px dashed var(--pg-border);
   }
@@ -367,12 +373,12 @@ body {
   }
 
   .confirm-row {
-    @apply flex items-center justify-between gap-2 px-2.5 py-2 rounded-[var(--pg-radius-sm)] text-[12.5px];
+    @apply flex items-center justify-between gap-2 rounded-[var(--pg-radius-sm)] px-2.5 py-2 text-[12.5px];
     background: var(--pg-danger-soft);
   }
 
   .confirm-actions {
-    @apply flex gap-1.5 flex-shrink-0;
+    @apply flex flex-shrink-0 gap-1.5;
   }
 
   .confirm-actions button {
@@ -386,7 +392,7 @@ body {
   }
 
   .send-trail-line {
-    @apply flex-1 h-0.5 relative rounded-full overflow-hidden;
+    @apply relative h-0.5 flex-1 overflow-hidden rounded-full;
     background: color-mix(in srgb, currentColor 25%, transparent);
   }
 

@@ -24,7 +24,11 @@ export function SetupForm({ onCreate, onJoin }: SetupFormProps) {
     });
   }, []);
 
-  function saveDraft(next: { host: string; useTls: boolean; pairingPayloadIn: string }): void {
+  function saveDraft(next: {
+    host: string;
+    useTls: boolean;
+    pairingPayloadIn: string;
+  }): void {
     void setSetupDraft(next);
   }
 
@@ -107,7 +111,12 @@ export function SetupForm({ onCreate, onJoin }: SetupFormProps) {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => onCreate(passphraseRef.current!.value, `${useTls ? 'wss' : 'ws'}://${host.trim()}`)}
+            onClick={() =>
+              onCreate(
+                passphraseRef.current!.value,
+                `${useTls ? 'wss' : 'ws'}://${host.trim()}`,
+              )
+            }
           >
             Create a new room
           </button>
@@ -132,7 +141,9 @@ export function SetupForm({ onCreate, onJoin }: SetupFormProps) {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => onJoin(passphraseRef.current!.value, pairingPayloadIn.trim())}
+            onClick={() =>
+              onJoin(passphraseRef.current!.value, pairingPayloadIn.trim())
+            }
           >
             Join with this code
           </button>

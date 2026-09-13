@@ -9,7 +9,10 @@ function toHex(bytes: Uint8Array): string {
 function toBase64Url(bytes: Uint8Array): string {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
 }
 
 export function randomToken(): string {
@@ -18,10 +21,16 @@ export function randomToken(): string {
 
 export function randomPairingCode(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(PAIRING_CODE_LENGTH));
-  return Array.from(bytes, (b) => PAIRING_CODE_ALPHABET[b % PAIRING_CODE_ALPHABET.length]).join('');
+  return Array.from(
+    bytes,
+    (b) => PAIRING_CODE_ALPHABET[b % PAIRING_CODE_ALPHABET.length],
+  ).join('');
 }
 
 export async function hashToken(token: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(token),
+  );
   return toHex(new Uint8Array(digest));
 }

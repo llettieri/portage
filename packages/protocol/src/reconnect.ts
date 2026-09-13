@@ -17,7 +17,10 @@ export function computeReconnectDelay(
   options: BackoffOptions = DEFAULT_BACKOFF,
   rand: () => number = Math.random,
 ): number {
-  const raw = Math.min(options.baseMs * options.factor ** attempt, options.maxMs);
+  const raw = Math.min(
+    options.baseMs * options.factor ** attempt,
+    options.maxMs,
+  );
   const jitter = raw * options.jitterRatio * (rand() * 2 - 1);
   return Math.max(0, Math.round(raw + jitter));
 }

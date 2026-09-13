@@ -6,7 +6,9 @@ export function encodePairingPayload(payload: PairingPayload): string {
 }
 
 export function decodePairingPayload(encoded: string): PairingPayload {
-  const parsed = JSON.parse(new TextDecoder().decode(fromBase64(encoded))) as Partial<PairingPayload>;
+  const parsed = JSON.parse(
+    new TextDecoder().decode(fromBase64(encoded)),
+  ) as Partial<PairingPayload>;
   if (
     typeof parsed.v !== 'number' ||
     typeof parsed.room !== 'string' ||

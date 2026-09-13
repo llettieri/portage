@@ -14,7 +14,14 @@ interface HomeProps {
 
 type SendPhase = 'idle' | 'sending' | 'sent';
 
-export function Home({ pending, onSendTab, onInvite, onForget, onOpen, onRemove }: HomeProps) {
+export function Home({
+  pending,
+  onSendTab,
+  onInvite,
+  onForget,
+  onOpen,
+  onRemove,
+}: HomeProps) {
   const [sendPhase, setSendPhase] = useState<SendPhase>('idle');
   const [confirmingForget, setConfirmingForget] = useState(false);
 
@@ -61,15 +68,25 @@ export function Home({ pending, onSendTab, onInvite, onForget, onOpen, onRemove 
       <div className="field">
         <span className="eyebrow">Devices</span>
         <div className="devices-row">
-          <button type="button" className="btn btn-secondary" onClick={onInvite}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onInvite}
+          >
             <PlusIcon /> Invite another device
           </button>
         </div>
         {confirmingForget ? (
           <div className="confirm-row">
-            <span>Forget this room? You'll need the passphrase again to rejoin.</span>
+            <span>
+              Forget this room? You'll need the passphrase again to rejoin.
+            </span>
             <div className="confirm-actions">
-              <button type="button" className="btn btn-secondary" onClick={() => setConfirmingForget(false)}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setConfirmingForget(false)}
+              >
                 Cancel
               </button>
               <button
@@ -86,7 +103,11 @@ export function Home({ pending, onSendTab, onInvite, onForget, onOpen, onRemove 
             </div>
           </div>
         ) : (
-          <button type="button" className="btn-danger-text" onClick={() => setConfirmingForget(true)}>
+          <button
+            type="button"
+            className="btn-danger-text"
+            onClick={() => setConfirmingForget(true)}
+          >
             Forget this room
           </button>
         )}

@@ -1,0 +1,23 @@
+# deps
+/node_modules
+pnpm-lock.yaml
+
+# testing
+/coverage
+
+# build output
+**/dist
+**/.output
+**/.wxt
+*.tsbuildinfo
+
+# env
+.env*
+!.env.example
+
+# config
+.github
+.claude
+
+# docs
+*.md
