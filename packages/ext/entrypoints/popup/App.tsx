@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { getDecryptError, getPendingHandoffs, getRoomConfig, removePendingHandoff, type PendingHandoff } from '../../lib/state.js';
-import { ReceivedList } from './ReceivedList.js';
-import { SetupForm } from './SetupForm.js';
-import { StatusDot } from './StatusDot.js';
-import { UnlockForm } from './UnlockForm.js';
+import { getDecryptError, getPendingHandoffs, getRoomConfig, removePendingHandoff, type PendingHandoff } from '@/lib/state.ts';
+import { Banner } from '@/entrypoints/popup/Banner.tsx';
+import { Header } from '@/entrypoints/popup/Header.tsx';
+import { Home } from '@/entrypoints/popup/Home.tsx';
+import { PairingCodeCard } from '@/entrypoints/popup/PairingCodeCard.tsx';
+import { SetupForm } from '@/entrypoints/popup/SetupForm.tsx';
+import { UnlockForm } from '@/entrypoints/popup/UnlockForm.tsx';
 
 interface ViewState {
   connected: boolean;
@@ -104,11 +106,15 @@ export function App() {
   async function handleSendTab(): Promise<void> {
     setActionError(null);
     const response = (await browser.runtime.sendMessage({ type: 'send-tab' })) as { ok: boolean; error?: string };
-    if (!response?.ok) setActionError(`Could not send tab: ${response?.error ?? 'unknown error'}`);
+    if (!response?.ok) {
+      setActionError(`Could not send tab: ${response?.error ?? 'unknown error'}`);
+      throw new Error(response?.error ?? 'send failed');
+    }
   }
 
   async function handleForgetRoom(): Promise<void> {
     setActionError(null);
+    setPairingPayloadOut(null);
     await browser.runtime.sendMessage({ type: 'forget-room' });
     await refresh();
   }
@@ -129,35 +135,42 @@ export function App() {
     await refresh();
   }
 
+  async function handleRemove(item: PendingHandoff): Promise<void> {
+    await removePendingHandoff(item);
+    await refresh();
+  }
+
+  const stage: 'setup' | 'locked' | 'home' = !view.roomConfigured ? 'setup' : !view.unlocked ? 'locked' : 'home';
+
   return (
-    <div>
-      <StatusDot connected={view.connected} />
-      <div style={{ display: view.hasDecryptError ? 'block' : 'none', color: '#c0392b', fontWeight: 'bold', marginBottom: 8 }}>
-        Couldn't decrypt a received message — check your passphrase.
+    <div className="popup">
+      <Header connected={view.connected} showStatus={stage === 'home'} />
+      <div className="body">
+        {view.hasDecryptError && (
+          <Banner tone="error">Couldn't decrypt a received message — check your passphrase.</Banner>
+        )}
+        {actionError && (
+          <Banner tone="error" onDismiss={() => setActionError(null)}>
+            {actionError}
+          </Banner>
+        )}
+        {pairingPayloadOut && (
+          <PairingCodeCard value={pairingPayloadOut} onDismiss={() => setPairingPayloadOut(null)} />
+        )}
+
+        {stage === 'setup' && <SetupForm onCreate={(p, h) => void handleCreate(p, h)} onJoin={(p, payload) => void handleJoin(p, payload)} />}
+        {stage === 'locked' && <UnlockForm onUnlock={(p) => void handleUnlock(p)} />}
+        {stage === 'home' && (
+          <Home
+            pending={view.pending}
+            onSendTab={handleSendTab}
+            onInvite={() => void handleInvite()}
+            onForget={() => void handleForgetRoom()}
+            onOpen={(item) => void handleOpen(item)}
+            onRemove={(item) => void handleRemove(item)}
+          />
+        )}
       </div>
-      {actionError && (
-        <div style={{ color: '#c0392b', fontWeight: 'bold', marginBottom: 8 }}>{actionError}</div>
-      )}
-      <UnlockForm visible={view.roomConfigured && !view.unlocked} onUnlock={(p) => void handleUnlock(p)} />
-      <SetupForm
-        visible={!view.roomConfigured}
-        pairingPayloadOut={pairingPayloadOut}
-        onCreate={(p, h) => void handleCreate(p, h)}
-        onJoin={(p, payload) => void handleJoin(p, payload)}
-      />
-      <button
-        style={{ display: view.roomConfigured && view.unlocked ? 'block' : 'none' }}
-        onClick={() => void handleSendTab()}
-      >
-        Send current tab
-      </button>
-      <button style={{ display: view.roomConfigured ? 'block' : 'none' }} onClick={() => void handleInvite()}>
-        Invite another device
-      </button>
-      <button style={{ display: view.roomConfigured ? 'block' : 'none' }} onClick={() => void handleForgetRoom()}>
-        Forget this room
-      </button>
-      <ReceivedList items={view.pending} onOpen={(item) => void handleOpen(item)} />
     </div>
   );
 }

@@ -1,24 +1,50 @@
-import { useRef } from 'react';
+import { useId, useRef, useState } from 'react';
+import { EyeIcon, EyeOffIcon } from '@/entrypoints/popup/icons.tsx';
 
 interface UnlockFormProps {
-  visible: boolean;
   onUnlock: (passphrase: string) => void;
 }
 
-export function UnlockForm({ visible, onUnlock }: UnlockFormProps) {
+export function UnlockForm({ onUnlock }: UnlockFormProps) {
   const passphraseRef = useRef<HTMLInputElement>(null);
+  const [reveal, setReveal] = useState(false);
+  const fieldId = useId();
+
+  function submit(): void {
+    onUnlock(passphraseRef.current!.value);
+    passphraseRef.current!.value = '';
+  }
 
   return (
-    <div style={{ display: visible ? 'block' : 'none' }}>
-      <input ref={passphraseRef} type="password" placeholder="Re-enter shared passphrase" />
-      <button
-        onClick={() => {
-          onUnlock(passphraseRef.current!.value);
-          passphraseRef.current!.value = '';
-        }}
-      >
+    <form
+      className="field"
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+    >
+      <label htmlFor={fieldId}>This room is locked</label>
+      <div className="password-row">
+        <input
+          id={fieldId}
+          ref={passphraseRef}
+          className="input"
+          type={reveal ? 'text' : 'password'}
+          placeholder="Shared passphrase"
+          autoFocus
+        />
+        <button
+          type="button"
+          className="reveal-toggle"
+          aria-label={reveal ? 'Hide passphrase' : 'Show passphrase'}
+          onClick={() => setReveal((v) => !v)}
+        >
+          {reveal ? <EyeOffIcon /> : <EyeIcon />}
+        </button>
+      </div>
+      <button type="submit" className="btn btn-primary">
         Unlock
       </button>
-    </div>
+    </form>
   );
 }

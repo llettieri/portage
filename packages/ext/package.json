@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "postinstall": "wxt prepare",
+    "icons": "node scripts/generate-icons.js",
     "dev:chrome": "wxt -b chrome",
     "dev:firefox": "wxt -b firefox",
     "build": "pnpm run build:chrome && pnpm run build:firefox && pnpm run zip:firefox",
@@ -21,9 +22,12 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@wxt-dev/module-react": "^1.2.2",
+    "sharp": "^0.35.4",
+    "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "wxt": "^0.21.4"
   }
