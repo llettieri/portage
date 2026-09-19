@@ -9,35 +9,59 @@ import {
   encrypt,
   encodePairingPayload,
   fromBase64,
+  MAX_MIRROR_TABS_PER_DEVICE,
   MAX_PAYLOAD_BYTES,
   openEnvelope,
   toBase64,
   toHttpBase,
+  type CloseRequestPayload,
   type HandoffPayload,
   type InboxDrainResponse,
   type PresencePayload,
   type RelayFrame,
 } from 'protocol';
 import {
+  addClosingTabId,
+  addDismissedMirror,
   addPendingHandoff,
   clearDeviceId,
   clearLiveSyncState,
   clearPendingHandoffs,
   clearRoomConfig,
+  getClosingTabIds,
   getDeviceId,
+  getDismissedMirrors,
   getLastSnapshotHash,
   getLiveSync,
+  getMirrorTabIndex,
+  getRemoteSnapshots,
   getRoomConfig,
+  getSentinelTabId,
   getStoredPassphrase,
+  removeClosingTabId,
   setConnected,
   setDecryptError,
   setLastSnapshotHash,
+  setLiveSync,
   setLiveSyncError,
+  setMirrorTabIndex,
   setRoomConfig,
+  setSentinelTabId,
   setStoredPassphrase,
+  type MirrorTabInfo,
   type RoomConfig,
 } from '../lib/state.js';
-import { filterPublishableTabs, hashTabSet } from '../lib/liveSync.js';
+import {
+  buildMirrorUrl,
+  buildSentinelUrl,
+  computeDesiredMirrors,
+  diffMirrorTabs,
+  filterPublishableTabs,
+  hashTabSet,
+  isMirrorUrl,
+  parseMirrorUrl,
+  type ExistingMirrorTab,
+} from '../lib/liveSync.js';
 
 const RECONNECT_ALARM = 'portage-reconnect';
 const KEY_CHECK_VALUE = 'portage-key-check-v1';
@@ -142,6 +166,178 @@ async function publishPresence(): Promise<void> {
   socket.send(JSON.stringify(envelope));
   await setLastSnapshotHash(hash);
   await setLiveSyncError(null);
+}
+
+let reconciling: Promise<void> | null = null;
+
+function reconcile(): Promise<void> {
+  if (!reconciling) {
+    reconciling = doReconcile().finally(() => {
+      reconciling = null;
+    });
+  }
+  return reconciling;
+}
+
+async function doReconcile(): Promise<void> {
+  const liveSync = await getLiveSync();
+  if (!liveSync) return;
+  const config = await getRoomConfig();
+  if (!config) return;
+
+  const origin = extensionOrigin();
+  const sentinelUrl = buildSentinelUrl(origin);
+  let allTabs = await browser.tabs.query({});
+  const existingSentinel = allTabs.find((tab) => tab.url === sentinelUrl);
+
+  let windowId: number;
+  let sentinelTabId: number;
+  if (
+    existingSentinel &&
+    typeof existingSentinel.windowId === 'number' &&
+    typeof existingSentinel.id === 'number'
+  ) {
+    windowId = existingSentinel.windowId;
+    sentinelTabId = existingSentinel.id;
+  } else {
+    // browser.windows.create resolves to `Window | undefined` — both the window and its
+    // opened tab must be checked, not just truthiness-tested, or a missing id (0 is a
+    // legal window id) would be mistaken for failure.
+    const created = await browser.windows.create({
+      url: sentinelUrl,
+      focused: false,
+    });
+    const createdTab = created?.tabs?.[0];
+    if (typeof created?.id !== 'number' || typeof createdTab?.id !== 'number') {
+      return;
+    }
+    windowId = created.id;
+    sentinelTabId = createdTab.id;
+    await browser.tabs.update(sentinelTabId, { pinned: true });
+    allTabs = await browser.tabs.query({});
+  }
+  await setSentinelTabId(sentinelTabId);
+
+  const remoteSnapshots = await getRemoteSnapshots();
+  const dismissed = await getDismissedMirrors();
+  const desired = computeDesiredMirrors(
+    remoteSnapshots,
+    MAX_MIRROR_TABS_PER_DEVICE,
+    dismissed,
+  );
+
+  const windowTabs = allTabs.filter((tab) => tab.windowId === windowId);
+  const existingMirrors: ExistingMirrorTab[] = [];
+  for (const tab of windowTabs) {
+    if (typeof tab.id !== 'number' || typeof tab.url !== 'string') continue;
+    if (tab.url === sentinelUrl || !isMirrorUrl(tab.url, origin)) continue;
+    const parsed = parseMirrorUrl(tab.url);
+    if (!parsed) continue;
+    existingMirrors.push({ id: tab.id, deviceId: parsed.deviceId, url: parsed.url });
+  }
+
+  const { toCreate, toCloseIds } = diffMirrorTabs(desired, existingMirrors);
+  const toCloseIdSet = new Set(toCloseIds);
+
+  const index: Record<number, MirrorTabInfo> = {};
+  for (const mirror of existingMirrors) {
+    if (!toCloseIdSet.has(mirror.id)) {
+      index[mirror.id] = { deviceId: mirror.deviceId, url: mirror.url };
+    }
+  }
+
+  for (const mirror of toCreate) {
+    // SHOULD skip creating a mirror when the same URL is already open locally outside the
+    // mirror window (spec §4.5) — mirroring a tab the person already has open is noise.
+    const alreadyOpenElsewhere = allTabs.some(
+      (tab) => tab.url === mirror.url && tab.windowId !== windowId,
+    );
+    if (alreadyOpenElsewhere) continue;
+    const createdTab = await browser.tabs.create({
+      windowId,
+      url: buildMirrorUrl(origin, mirror),
+      active: false,
+    });
+    if (typeof createdTab.id === 'number') {
+      index[createdTab.id] = { deviceId: mirror.deviceId, url: mirror.url };
+    }
+  }
+
+  for (const tabId of toCloseIds) {
+    await addClosingTabId(tabId);
+    await browser.tabs.remove(tabId);
+  }
+
+  await setMirrorTabIndex(index);
+}
+
+async function removeFromMirrorTabIndex(tabId: number): Promise<void> {
+  const index = await getMirrorTabIndex();
+  if (!(tabId in index)) return;
+  const { [tabId]: _removed, ...rest } = index;
+  await setMirrorTabIndex(rest);
+}
+
+async function sendCloseRequest(toDeviceId: string, url: string): Promise<void> {
+  await connect().catch(() => {});
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  const cryptoKey = await resolveCryptoKey();
+  if (!cryptoKey) return;
+  const config = await getRoomConfig();
+  if (!config) return;
+  const deviceId = await getDeviceId();
+  const envelope = await buildEnvelope(
+    cryptoKey,
+    { room: config.roomId, device: deviceId, to: toDeviceId, kind: 'close-request' },
+    { url, requestedAt: Date.now() } satisfies CloseRequestPayload,
+  );
+  socket.send(JSON.stringify(envelope));
+}
+
+async function handleTabRemoved(
+  tabId: number,
+  removeInfo: { windowId: number; isWindowClosing: boolean },
+): Promise<void> {
+  const closingIds = await getClosingTabIds();
+  if (closingIds.includes(tabId)) {
+    // Reconciler-initiated close — clean up bookkeeping, send no close-request.
+    await removeClosingTabId(tabId);
+    await removeFromMirrorTabIndex(tabId);
+    return;
+  }
+
+  const sentinelTabId = await getSentinelTabId();
+  const index = await getMirrorTabIndex();
+  // removeInfo.isWindowClosing is true for every tab of ANY window that just closed, not
+  // only the mirror window — so it must be combined with "this tab is one we track" before
+  // it means anything. Without this check, closing an unrelated browser window would
+  // silently turn liveSync off. This is evaluated before the mirror-index-driven
+  // close-request branch below either way, so it still gates that path correctly.
+  const isOwnTab = tabId === sentinelTabId || tabId in index;
+  if (!isOwnTab) return;
+
+  if (removeInfo.isWindowClosing || tabId === sentinelTabId) {
+    // The whole mirror window went away — tabs.onRemoved fires once per tab it contained,
+    // not once for the window, so isWindowClosing MUST gate this: without it, every
+    // mirror tab in a closed window falls through to the "person closed one mirror by
+    // hand" branch below and fires a close-request for each one, closing real tabs on
+    // other devices. Pause, don't recreate it (spec §4.7) — the popup toggle turns it
+    // back on.
+    await setLiveSync(false);
+    await setLiveSyncError(null);
+    await setMirrorTabIndex({});
+    await setSentinelTabId(null);
+    return;
+  }
+
+  const info = index[tabId];
+  if (!info) return;
+  // A person closed a mirror by hand: tell its origin device, then dismiss it locally so
+  // reconcile doesn't immediately recreate it. It reappears once the origin publishes a
+  // genuinely new snapshot (spec §4.5; the dismissal is cleared in Task 12).
+  await removeFromMirrorTabIndex(tabId);
+  await addDismissedMirror(info.deviceId, info.url);
+  await sendCloseRequest(info.deviceId, info.url);
 }
 
 async function computeKeyCheck(
@@ -493,18 +689,27 @@ async function sendCurrentTab(to: string): Promise<void> {
 export default defineBackground({
   persistent: true,
   main() {
-    browser.runtime.onStartup.addListener(() => void connect().catch(() => {}));
-    browser.runtime.onInstalled.addListener(
-      () => void connect().catch(() => {}),
-    );
+    browser.runtime.onStartup.addListener(() => {
+      void connect().catch(() => {});
+      void reconcile().catch(() => {});
+    });
+    browser.runtime.onInstalled.addListener(() => {
+      void connect().catch(() => {});
+      void reconcile().catch(() => {});
+    });
     browser.alarms.create(RECONNECT_ALARM, { periodInMinutes: 1 });
     browser.alarms.onAlarm.addListener((alarm) => {
       if (alarm.name === RECONNECT_ALARM) {
         void connect().catch(() => {});
         void drainInbox();
         void publishPresence();
+        void reconcile().catch(() => {});
       }
     });
+
+    browser.tabs.onRemoved.addListener(
+      (tabId, removeInfo) => void handleTabRemoved(tabId, removeInfo),
+    );
 
     browser.runtime.onMessage.addListener(
       (
@@ -513,6 +718,7 @@ export default defineBackground({
           passphrase?: string;
           hubBaseUrl?: string;
           pairingPayload?: string;
+          value?: boolean;
         },
         _sender,
         sendResponse,
@@ -591,6 +797,20 @@ export default defineBackground({
           sendResponse({
             connected: socket !== null && socket.readyState === WebSocket.OPEN,
           });
+          return true;
+        }
+        if (message?.type === 'set-live-sync' && typeof message.value === 'boolean') {
+          void setLiveSync(message.value)
+            .then(() => {
+              if (!message.value) {
+                return setLiveSyncError(null);
+              }
+              return Promise.all([publishPresence(), reconcile()]).then(() => undefined);
+            })
+            .then(() => sendResponse({ ok: true }))
+            .catch((error: unknown) =>
+              sendResponse({ ok: false, error: String(error) }),
+            );
           return true;
         }
         return false;
