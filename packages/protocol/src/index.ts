@@ -22,8 +22,10 @@ export type {
 export {
   CURRENT_PBKDF2_ITERATIONS,
   decrypt,
+  decryptBytes,
   deriveKey,
   encrypt,
+  encryptBytes,
 } from './crypto.js';
 export type { EncryptedPayload } from './crypto.js';
 export {
