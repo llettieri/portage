@@ -16,3 +16,17 @@ class_name = "Room"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Room"]
+
+# Bindings and migrations are not inherited by named environments — Cloudflare
+# requires them to be redeclared per environment. `observability`, `name`,
+# `main`, and `compatibility_date` above are inherited as-is.
+[env.staging]
+name = "portage-hub-staging"
+
+[[env.staging.durable_objects.bindings]]
+name = "ROOM"
+class_name = "Room"
+
+[[env.staging.migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]

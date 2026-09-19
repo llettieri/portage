@@ -1,0 +1,58 @@
+name: Build
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+      # protocol -> tsc, hub -> wrangler dry-run bundle, ext -> wxt build (chrome + firefox) + firefox zip.
+      - run: pnpm build
+
+      - name: Upload protocol build
+        uses: actions/upload-artifact@v4
+        with:
+          name: protocol-dist
+          path: packages/protocol/dist
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload hub build
+        uses: actions/upload-artifact@v4
+        with:
+          name: hub-dist
+          path: packages/hub/dist
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload extension build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ext-output
+          path: packages/ext/.output
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
