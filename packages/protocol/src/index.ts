@@ -35,7 +35,12 @@ export {
   PRESENCE_EXPIRY_MS,
 } from './limits.js';
 export { serializeHeader } from './header.js';
-export { buildEnvelope, openEnvelope } from './envelope.js';
+export {
+  buildEnvelope,
+  ENVELOPE_VERSION,
+  openEnvelope,
+  UnsupportedEnvelopeVersionError,
+} from './envelope.js';
 export { InvalidPayloadError, validateEnvelopePayload } from './validate.js';
 export { computeReconnectDelay, DEFAULT_BACKOFF } from './reconnect.js';
 export type { BackoffOptions } from './reconnect.js';

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { buildEnvelope, openEnvelope } from './envelope.js';
+import {
+  buildEnvelope,
+  ENVELOPE_VERSION,
+  openEnvelope,
+  UnsupportedEnvelopeVersionError,
+} from './envelope.js';
 import { deriveKey } from './crypto.js';
 import { InvalidPayloadError } from './validate.js';
+import { MAX_PAYLOAD_BYTES } from './limits.js';
 
 const HEADER = {
   room: 'room1',
@@ -69,5 +75,111 @@ describe('buildEnvelope / openEnvelope', () => {
     await expect(openEnvelope(key, envelope)).rejects.toThrow(
       InvalidPayloadError,
     );
+  });
+});
+
+describe('envelope v2', () => {
+  it('round-trips a presence payload', async () => {
+    const key = await testKey();
+    const payload = {
+      tabs: [{ url: 'https://example.com', title: 'Example', lastAccessed: 1 }],
+      snapshotTs: 2,
+    };
+
+    const envelope = await buildEnvelope(key, { ...HEADER, kind: 'presence' }, payload);
+    expect(envelope.v).toBe(ENVELOPE_VERSION);
+    const opened = await openEnvelope(key, envelope);
+
+    expect(opened).toEqual(payload);
+  });
+
+  it('round-trips a close-request payload', async () => {
+    const key = await testKey();
+    const payload = { url: 'https://example.com', requestedAt: 5 };
+
+    const envelope = await buildEnvelope(
+      key,
+      { ...HEADER, kind: 'close-request' },
+      payload,
+    );
+    const opened = await openEnvelope(key, envelope);
+
+    expect(opened).toEqual(payload);
+  });
+
+  it('round-trips a stash payload', async () => {
+    const key = await testKey();
+    const payload = [
+      { id: '1', url: 'https://example.com', title: 'Example', origin: 'arc' as const, addedAt: 1 },
+    ];
+
+    const envelope = await buildEnvelope(
+      key,
+      { ...HEADER, kind: 'stash' },
+      payload,
+    );
+    const opened = await openEnvelope(key, envelope);
+
+    expect(opened).toEqual(payload);
+  });
+
+  it('throws UnsupportedEnvelopeVersionError, not a decryption error, for a v1 envelope', async () => {
+    const key = await testKey();
+    const envelope = await buildEnvelope(key, HEADER, {
+      url: 'https://example.com',
+      title: 'x',
+    });
+    const v1Envelope = { ...envelope, v: 1 };
+
+    await expect(openEnvelope(key, v1Envelope)).rejects.toThrow(
+      UnsupportedEnvelopeVersionError,
+    );
+  });
+
+  it('fails when `room` is tampered with after encryption', async () => {
+    const key = await testKey();
+    const envelope = await buildEnvelope(key, HEADER, {
+      url: 'https://example.com',
+      title: 'x',
+    });
+    const tampered = { ...envelope, room: 'someone-elses-room' };
+    await expect(openEnvelope(key, tampered)).rejects.toThrow();
+  });
+
+  it('fails when `to` is tampered with after encryption', async () => {
+    const key = await testKey();
+    const envelope = await buildEnvelope(key, HEADER, {
+      url: 'https://example.com',
+      title: 'x',
+    });
+    const tampered = { ...envelope, to: 'a-different-device' };
+    await expect(openEnvelope(key, tampered)).rejects.toThrow();
+  });
+
+  it('fails when `ts` is tampered with after encryption', async () => {
+    const key = await testKey();
+    const envelope = await buildEnvelope(key, HEADER, {
+      url: 'https://example.com',
+      title: 'x',
+    });
+    const tampered = { ...envelope, ts: envelope.ts + 1 };
+    await expect(openEnvelope(key, tampered)).rejects.toThrow();
+  });
+
+  it('a 500-tab presence payload gzips to well under the plaintext budget', async () => {
+    const key = await testKey();
+    const tabs = Array.from({ length: 500 }, (_, i) => ({
+      url: `https://example.com/page-${i}`,
+      title: `Page ${i} — a reasonably descriptive title`,
+      lastAccessed: i,
+    }));
+
+    const envelope = await buildEnvelope(key, { ...HEADER, kind: 'presence' }, {
+      tabs,
+      snapshotTs: 1,
+    });
+
+    const envelopeBytes = new TextEncoder().encode(JSON.stringify(envelope)).length;
+    expect(envelopeBytes).toBeLessThan(MAX_PAYLOAD_BYTES);
   });
 });

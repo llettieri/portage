@@ -1,7 +1,9 @@
-import { decrypt, encrypt } from './crypto.js';
+import { decryptBytes, encryptBytes } from './crypto.js';
+import { gunzip, gzip } from './gzip.js';
 import { serializeHeader } from './header.js';
 import { validateEnvelopePayload } from './validate.js';
 import type {
+  CloseRequestPayload,
   Envelope,
   EnvelopeHeader,
   HandoffPayload,
@@ -9,16 +11,31 @@ import type {
   StashItem,
 } from './types.js';
 
+export const ENVELOPE_VERSION = 2;
+
+export class UnsupportedEnvelopeVersionError extends Error {
+  constructor(version: number) {
+    super(`received envelope has unsupported version ${version}`);
+    this.name = 'UnsupportedEnvelopeVersionError';
+  }
+}
+
 export async function buildEnvelope(
   key: CryptoKey,
   header: Omit<EnvelopeHeader, 'ts' | 'v'>,
-  payload: HandoffPayload | PresencePayload | StashItem[],
+  payload:
+    | HandoffPayload
+    | PresencePayload
+    | CloseRequestPayload
+    | StashItem[],
 ): Promise<Envelope> {
   const ts = Date.now();
-  const fullHeader: EnvelopeHeader = { v: 1, ...header, ts };
-  const { iv, ciphertext } = await encrypt(
+  const fullHeader: EnvelopeHeader = { ...header, v: ENVELOPE_VERSION, ts };
+  const plaintext = new TextEncoder().encode(JSON.stringify(payload));
+  const compressed = await gzip(plaintext);
+  const { iv, ciphertext } = await encryptBytes(
     key,
-    payload,
+    compressed,
     serializeHeader(fullHeader),
   );
   return { ...fullHeader, iv, ciphertext };
@@ -27,7 +44,12 @@ export async function buildEnvelope(
 export async function openEnvelope(
   key: CryptoKey,
   envelope: Envelope,
-): Promise<HandoffPayload | PresencePayload | StashItem[]> {
+): Promise<
+  HandoffPayload | PresencePayload | CloseRequestPayload | StashItem[]
+> {
+  if (envelope.v !== ENVELOPE_VERSION) {
+    throw new UnsupportedEnvelopeVersionError(envelope.v);
+  }
   const header: EnvelopeHeader = {
     v: envelope.v,
     room: envelope.room,
@@ -36,10 +58,12 @@ export async function openEnvelope(
     kind: envelope.kind,
     ts: envelope.ts,
   };
-  const payload = await decrypt<unknown>(
+  const compressed = await decryptBytes(
     key,
     envelope,
     serializeHeader(header),
   );
+  const plaintext = await gunzip(compressed);
+  const payload: unknown = JSON.parse(new TextDecoder().decode(plaintext));
   return validateEnvelopePayload(envelope.kind, payload);
 }
