@@ -14,6 +14,7 @@ import { isEchoableCloseCode } from './closeCodes.js';
 import {
   MAX_PAYLOAD_BYTES,
   MAX_QUEUE_DEPTH_PER_DEVICE,
+  PRESENCE_EXPIRY_MS,
   RATE_LIMIT_MAX_MESSAGES,
   RATE_LIMIT_WINDOW_MS,
 } from './limits.js';
@@ -66,13 +67,44 @@ export class Room implements DurableObject {
       CREATE TABLE IF NOT EXISTS inbox (
         id TEXT PRIMARY KEY,
         to_device TEXT NOT NULL,
+        sender_device TEXT,
+        kind TEXT NOT NULL DEFAULT 'handoff',
         envelope TEXT NOT NULL,
         created_at INTEGER NOT NULL
       )
     `);
+    this.migrateInboxColumns();
     this.state.storage.sql.exec(
       'CREATE INDEX IF NOT EXISTS inbox_to_device_idx ON inbox (to_device)',
     );
+    this.state.storage.sql.exec(
+      'CREATE INDEX IF NOT EXISTS inbox_presence_idx ON inbox (to_device, sender_device, kind)',
+    );
+  }
+
+  // Rooms whose `inbox` table predates this migration already have CREATE TABLE IF NOT
+  // EXISTS skip them — this adds the two new columns idempotently, safe to call on every
+  // cold start regardless of whether the table is brand new or years old. Reads the stored
+  // CREATE TABLE DDL from sqlite_master (a plain SELECT, not a PRAGMA) to check which
+  // columns already exist — avoids depending on PRAGMA table_info being permitted on the
+  // Workers SQLite backend, which is unconfirmed.
+  private migrateInboxColumns(): void {
+    const ddl =
+      this.state.storage.sql
+        .exec<{ sql: string }>(
+          "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'inbox'",
+        )
+        .toArray()[0]?.sql ?? '';
+    if (!ddl.includes('sender_device')) {
+      this.state.storage.sql.exec(
+        'ALTER TABLE inbox ADD COLUMN sender_device TEXT',
+      );
+    }
+    if (!ddl.includes('kind')) {
+      this.state.storage.sql.exec(
+        "ALTER TABLE inbox ADD COLUMN kind TEXT NOT NULL DEFAULT 'handoff'",
+      );
+    }
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -295,12 +327,25 @@ export class Room implements DurableObject {
   webSocketMessage(sender: WebSocket, message: string | ArrayBuffer): void {
     if (typeof message !== 'string') return;
     if (message.length > MAX_PAYLOAD_BYTES) return;
+    if (new TextEncoder().encode(message).length > MAX_PAYLOAD_BYTES) return;
     if (!this.checkRateLimit()) return;
 
     let envelope: Envelope;
     try {
       envelope = JSON.parse(message) as Envelope;
     } catch {
+      return;
+    }
+
+    const senderAttachment =
+      sender.deserializeAttachment() as SocketAttachment | null;
+    if (!senderAttachment || envelope.device !== senderAttachment.deviceId) {
+      // The hub must never trust a self-reported sender identity in the envelope body —
+      // only the identity the socket authenticated as, at upgrade time. Without this, a
+      // device could put any `device` string in the envelope and forge presence updates as
+      // another device (presence rows are upserted by (to_device, sender_device)) or evict
+      // another device's pending presence row, and since presence bypasses the queue-depth
+      // cap, forge unbounded storage growth.
       return;
     }
 
@@ -315,15 +360,13 @@ export class Room implements DurableObject {
     }
 
     if (envelope.to === 'all') {
-      const senderAttachment =
-        sender.deserializeAttachment() as SocketAttachment | null;
       const deviceRows = this.state.storage.sql
         .exec<{ deviceId: string }>(
           'SELECT device_id AS deviceId FROM devices WHERE revoked = 0',
         )
         .toArray();
       for (const row of deviceRows) {
-        if (row.deviceId === senderAttachment?.deviceId) continue;
+        if (row.deviceId === senderAttachment.deviceId) continue;
         const id = this.enqueue(row.deviceId, envelope);
         if (id === null) continue; // queue full for this device — drop rather than partially deliver
         const frame: RelayFrame = { id, envelope };
@@ -363,24 +406,47 @@ export class Room implements DurableObject {
   }
 
   private expireOldInboxRows(): void {
+    const now = Date.now();
     this.state.storage.sql.exec(
-      'DELETE FROM inbox WHERE created_at < ?',
-      Date.now() - QUEUE_EXPIRY_MS,
+      "DELETE FROM inbox WHERE kind != 'presence' AND created_at < ?",
+      now - QUEUE_EXPIRY_MS,
+    );
+    this.state.storage.sql.exec(
+      "DELETE FROM inbox WHERE kind = 'presence' AND created_at < ?",
+      now - PRESENCE_EXPIRY_MS,
     );
   }
 
   private enqueue(toDeviceId: string, envelope: Envelope): string | null {
     this.expireOldInboxRows();
-    const countRows = this.state.storage.sql
-      .exec('SELECT COUNT(*) AS n FROM inbox WHERE to_device = ?', toDeviceId)
-      .toArray() as Array<{ n: number }>;
-    if (Number(countRows[0]?.n ?? 0) >= MAX_QUEUE_DEPTH_PER_DEVICE) return null;
+    const senderDeviceId = envelope.device;
+
+    if (envelope.kind === 'presence') {
+      // Presence is last-value, not a log: a newer snapshot from this sender replaces
+      // this recipient's pending row rather than queueing behind it (spec §6.4).
+      this.state.storage.sql.exec(
+        "DELETE FROM inbox WHERE to_device = ? AND sender_device = ? AND kind = 'presence'",
+        toDeviceId,
+        senderDeviceId,
+      );
+    } else {
+      const countRows = this.state.storage.sql
+        .exec<{ n: number }>(
+          "SELECT COUNT(*) AS n FROM inbox WHERE to_device = ? AND kind != 'presence'",
+          toDeviceId,
+        )
+        .toArray();
+      if (Number(countRows[0]?.n ?? 0) >= MAX_QUEUE_DEPTH_PER_DEVICE)
+        return null;
+    }
 
     const id = crypto.randomUUID();
     this.state.storage.sql.exec(
-      'INSERT INTO inbox (id, to_device, envelope, created_at) VALUES (?, ?, ?, ?)',
+      'INSERT INTO inbox (id, to_device, sender_device, kind, envelope, created_at) VALUES (?, ?, ?, ?, ?, ?)',
       id,
       toDeviceId,
+      senderDeviceId,
+      envelope.kind,
       JSON.stringify(envelope),
       Date.now(),
     );

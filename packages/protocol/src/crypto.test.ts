@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   CURRENT_PBKDF2_ITERATIONS,
   decrypt,
+  decryptBytes,
   deriveKey,
   encrypt,
+  encryptBytes,
 } from './crypto.js';
 
 const AAD = new TextEncoder().encode('room1\0device1\0all\0handoff\0' + '1');
@@ -89,5 +91,34 @@ describe('crypto round-trip', () => {
     const envelope = await encrypt(key, { secret: true }, AAD);
 
     await expect(decrypt(otherIterationsKey, envelope, AAD)).rejects.toThrow();
+  });
+});
+
+describe('encryptBytes / decryptBytes', () => {
+  it('round-trips raw bytes', async () => {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const key = await deriveKey(
+      'correct horse battery staple',
+      salt,
+      CURRENT_PBKDF2_ITERATIONS,
+    );
+    const plaintext = new TextEncoder().encode('raw bytes, not JSON');
+
+    const payload = await encryptBytes(key, plaintext, AAD);
+    const result = await decryptBytes(key, payload, AAD);
+
+    expect(result).toEqual(plaintext);
+  });
+
+  it('fails to decrypt bytes with the wrong AAD', async () => {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const key = await deriveKey(
+      'correct horse battery staple',
+      salt,
+      CURRENT_PBKDF2_ITERATIONS,
+    );
+    const payload = await encryptBytes(key, new TextEncoder().encode('x'), AAD);
+
+    await expect(decryptBytes(key, payload, OTHER_AAD)).rejects.toThrow();
   });
 });

@@ -15,6 +15,9 @@ web-ext-artifacts/
 docs/superpowers
 docs/tasks
 
+# Subagent-driven-development scratch workspace
+.superpowers/
+
 # Misc
 .idea
 .claude/*

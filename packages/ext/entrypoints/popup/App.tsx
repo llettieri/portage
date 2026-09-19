@@ -5,6 +5,10 @@ import {
   getRoomConfig,
   removePendingHandoff,
   type PendingHandoff,
+  getLiveSync,
+  getLiveSyncError,
+  getRemoteSnapshots,
+  type RemoteSnapshot,
 } from '@/lib/state.ts';
 import { Banner } from '@/entrypoints/popup/Banner.tsx';
 import { Header } from '@/entrypoints/popup/Header.tsx';
@@ -19,6 +23,9 @@ interface ViewState {
   roomConfigured: boolean;
   unlocked: boolean;
   pending: PendingHandoff[];
+  liveSync: boolean;
+  liveSyncError: string | null;
+  remoteSnapshots: Record<string, RemoteSnapshot>;
 }
 
 const initialView: ViewState = {
@@ -27,6 +34,9 @@ const initialView: ViewState = {
   roomConfigured: false,
   unlocked: false,
   pending: [],
+  liveSync: false,
+  liveSyncError: null,
+  remoteSnapshots: {},
 };
 
 export function App(): ReactNode {
@@ -43,6 +53,9 @@ export function App(): ReactNode {
       roomConfig,
       unlockStatus,
       connectionStatus,
+      liveSync,
+      liveSyncError,
+      remoteSnapshots,
     ] = await Promise.all([
       getDecryptError(),
       getPendingHandoffs(),
@@ -61,6 +74,9 @@ export function App(): ReactNode {
       ).catch(() => ({
         connected: false,
       })),
+      getLiveSync(),
+      getLiveSyncError(),
+      getRemoteSnapshots(),
     ]);
     setView({
       connected: connectionStatus?.connected ?? false,
@@ -68,6 +84,9 @@ export function App(): ReactNode {
       roomConfigured: roomConfig !== null,
       unlocked: unlockStatus?.unlocked ?? false,
       pending,
+      liveSync,
+      liveSyncError,
+      remoteSnapshots,
     });
   }
 
@@ -83,7 +102,10 @@ export function App(): ReactNode {
         ('connected' in changes ||
           'decryptError' in changes ||
           'pendingHandoffs' in changes ||
-          'roomConfig' in changes)
+          'roomConfig' in changes ||
+          'liveSync' in changes ||
+          'liveSyncError' in changes ||
+          'remoteSnapshots' in changes)
       ) {
         void refresh();
       }
@@ -175,6 +197,20 @@ export function App(): ReactNode {
     await refresh();
   }
 
+  async function handleSetLiveSync(value: boolean): Promise<void> {
+    setActionError(null);
+    const response = (await browser.runtime.sendMessage({
+      type: 'set-live-sync',
+      value,
+    })) as { ok: boolean; error?: string };
+    if (!response?.ok) {
+      setActionError(
+        `Could not change live sync: ${response?.error ?? 'unknown error'}`,
+      );
+    }
+    await refresh();
+  }
+
   async function handleUnlock(passphrase: string): Promise<void> {
     setActionError(null);
     const response = (await browser.runtime.sendMessage({
@@ -244,6 +280,10 @@ export function App(): ReactNode {
             onForget={() => void handleForgetRoom()}
             onOpen={(item) => void handleOpen(item)}
             onRemove={(item) => void handleRemove(item)}
+            liveSync={view.liveSync}
+            liveSyncError={view.liveSyncError}
+            remoteSnapshots={view.remoteSnapshots}
+            onSetLiveSync={(value) => void handleSetLiveSync(value)}
           />
         )}
       </div>

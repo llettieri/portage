@@ -1,4 +1,4 @@
-export type EnvelopeKind = 'handoff' | 'presence' | 'stash';
+export type EnvelopeKind = 'handoff' | 'presence' | 'stash' | 'close-request';
 
 export interface Envelope {
   v: number;
@@ -85,6 +85,19 @@ export interface HandoffPayload {
   title: string;
 }
 
+export interface TabRef {
+  url: string;
+  title: string;
+  lastAccessed?: number;
+}
+
 export interface PresencePayload {
-  tabs: Array<{ url: string; title: string }>;
+  tabs: TabRef[];
+  truncated?: boolean;
+  snapshotTs: number;
+}
+
+export interface CloseRequestPayload {
+  url: string;
+  requestedAt: number;
 }

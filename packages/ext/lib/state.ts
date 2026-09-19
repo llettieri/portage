@@ -1,3 +1,5 @@
+import type { PresencePayload } from 'protocol';
+
 export async function getDeviceId(): Promise<string> {
   const stored = await browser.storage.local.get('deviceId');
   if (typeof stored.deviceId === 'string') return stored.deviceId;
@@ -137,4 +139,193 @@ export async function removePendingHandoff(
     (h) => !(h.url === target.url && h.title === target.title),
   );
   await browser.storage.local.set({ pendingHandoffs: filtered });
+}
+
+export async function getLiveSync(): Promise<boolean> {
+  const stored = await browser.storage.local.get('liveSync');
+  return typeof stored.liveSync === 'boolean' ? stored.liveSync : false;
+}
+
+export async function setLiveSync(value: boolean): Promise<void> {
+  await browser.storage.local.set({ liveSync: value });
+}
+
+export async function getLastSnapshotHash(): Promise<string | null> {
+  const stored = await browser.storage.local.get('lastSnapshotHash');
+  return typeof stored.lastSnapshotHash === 'string'
+    ? stored.lastSnapshotHash
+    : null;
+}
+
+export async function setLastSnapshotHash(hash: string): Promise<void> {
+  await browser.storage.local.set({ lastSnapshotHash: hash });
+}
+
+// Tracked separately from lastSnapshotHash so publishPresence() can force a republish once
+// this is stale, even when the tab set itself hasn't changed — otherwise a newly-paired or
+// long-offline device could see an empty or stale mirror forever, since the hub expires
+// presence rows (PRESENCE_EXPIRY_MS) and an unchanging sender never resends on its own.
+export async function getLastPublishedAt(): Promise<number | null> {
+  const stored = await browser.storage.local.get('lastPublishedAt');
+  return typeof stored.lastPublishedAt === 'number'
+    ? stored.lastPublishedAt
+    : null;
+}
+
+export async function setLastPublishedAt(timestamp: number): Promise<void> {
+  await browser.storage.local.set({ lastPublishedAt: timestamp });
+}
+
+export interface RemoteSnapshot extends PresencePayload {
+  receivedAt: number;
+}
+
+export type RemoteSnapshots = Record<string, RemoteSnapshot>;
+
+export async function getRemoteSnapshots(): Promise<RemoteSnapshots> {
+  const stored = await browser.storage.local.get('remoteSnapshots');
+  return (
+    (stored.remoteSnapshots as Record<string, RemoteSnapshot> | undefined) ?? {}
+  );
+}
+
+export async function setRemoteSnapshot(
+  deviceId: string,
+  snapshot: RemoteSnapshot,
+): Promise<void> {
+  const existing = await getRemoteSnapshots();
+  await browser.storage.local.set({
+    remoteSnapshots: { ...existing, [deviceId]: snapshot },
+  });
+}
+
+// Session storage (not module globals — CLAUDE.md #2) for tab ids the reconciler is
+// currently closing, so the tabs.onRemoved listener can tell "we closed this mirror" from
+// "the person closed this mirror" and only send a close-request for the latter.
+export async function getClosingTabIds(): Promise<number[]> {
+  const stored = await browser.storage.session.get('closingTabIds');
+  return Array.isArray(stored.closingTabIds)
+    ? (stored.closingTabIds as number[])
+    : [];
+}
+
+export async function addClosingTabId(tabId: number): Promise<void> {
+  const existing = await getClosingTabIds();
+  if (existing.includes(tabId)) return;
+  await browser.storage.session.set({ closingTabIds: [...existing, tabId] });
+}
+
+export async function removeClosingTabId(tabId: number): Promise<void> {
+  const existing = await getClosingTabIds();
+  await browser.storage.session.set({
+    closingTabIds: existing.filter((id) => id !== tabId),
+  });
+}
+
+export interface MirrorTabInfo {
+  deviceId: string;
+  url: string;
+}
+
+export type MirrorTabIndex = Record<number, MirrorTabInfo>;
+
+// browser.tabs.onRemoved fires with only a tabId — never the removed tab's former URL —
+// so identifying which remote device's mirror just closed requires having recorded the
+// mapping beforehand. Session storage, not a module global, so it survives a
+// service-worker restart between the mirror being created and it being closed.
+export async function getMirrorTabIndex(): Promise<MirrorTabIndex> {
+  const stored = await browser.storage.session.get('mirrorTabIndex');
+  return (
+    (stored.mirrorTabIndex as Record<number, MirrorTabInfo> | undefined) ?? {}
+  );
+}
+
+export async function setMirrorTabIndex(
+  index: Record<number, MirrorTabInfo>,
+): Promise<void> {
+  await browser.storage.session.set({ mirrorTabIndex: index });
+}
+
+// Same rationale as mirrorTabIndex: onRemoved gives no way to tell "the sentinel tab (and
+// so the whole mirror window) just closed" without already knowing its tabId.
+export async function getSentinelTabId(): Promise<number | null> {
+  const stored = await browser.storage.session.get('sentinelTabId');
+  return typeof stored.sentinelTabId === 'number' ? stored.sentinelTabId : null;
+}
+
+export async function setSentinelTabId(tabId: number | null): Promise<void> {
+  if (tabId === null) {
+    await browser.storage.session.remove('sentinelTabId');
+  } else {
+    await browser.storage.session.set({ sentinelTabId: tabId });
+  }
+}
+
+// Manually closing a mirror drops it from the desired set "until the next snapshot" (spec
+// §4.5). Tracked as its own per-device dismissal set — rather than editing the stored copy
+// of the remote device's snapshot in place — so the §4.3 identical-snapshot check and the
+// sentinel's overflow list keep seeing the real, unmodified last-received snapshot.
+export async function getDismissedMirrors(): Promise<Record<string, string[]>> {
+  const stored = await browser.storage.session.get('dismissedMirrors');
+  return (
+    (stored.dismissedMirrors as Record<string, string[]> | undefined) ?? {}
+  );
+}
+
+export async function addDismissedMirror(
+  deviceId: string,
+  url: string,
+): Promise<void> {
+  const existing = await getDismissedMirrors();
+  const forDevice = existing[deviceId] ?? [];
+  if (forDevice.includes(url)) return;
+  await browser.storage.session.set({
+    dismissedMirrors: { ...existing, [deviceId]: [...forDevice, url] },
+  });
+}
+
+// Called whenever a genuinely new (non-identical) snapshot arrives from this device — that
+// is "the next snapshot" the dismissal was waiting for, whether or not it still contains
+// the dismissed URL.
+export async function clearDismissedMirrorsForDevice(
+  deviceId: string,
+): Promise<void> {
+  const existing = await getDismissedMirrors();
+  if (!(deviceId in existing)) return;
+  const rest = { ...existing };
+  delete rest[deviceId];
+  await browser.storage.session.set({ dismissedMirrors: rest });
+}
+
+// Mirrors the decryptError pattern: a transient status flag the popup reads reactively via
+// storage.onChanged, since publishPresence() runs on a timer with no caller to report to
+// directly. A publish that did not happen MUST NOT read as success (spec §11 — failures are
+// reported, never swallowed).
+export async function getLiveSyncError(): Promise<string | null> {
+  const stored = await browser.storage.local.get('liveSyncError');
+  return typeof stored.liveSyncError === 'string' ? stored.liveSyncError : null;
+}
+
+export async function setLiveSyncError(value: string | null): Promise<void> {
+  if (value === null) {
+    await browser.storage.local.remove('liveSyncError');
+  } else {
+    await browser.storage.local.set({ liveSyncError: value });
+  }
+}
+
+export async function clearLiveSyncState(): Promise<void> {
+  await browser.storage.local.remove([
+    'liveSync',
+    'lastSnapshotHash',
+    'lastPublishedAt',
+    'remoteSnapshots',
+    'liveSyncError',
+  ]);
+  await browser.storage.session.remove([
+    'closingTabIds',
+    'mirrorTabIndex',
+    'sentinelTabId',
+    'dismissedMirrors',
+  ]);
 }
