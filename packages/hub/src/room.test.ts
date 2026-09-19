@@ -1180,3 +1180,42 @@ describe('presence expiry, depth-cap exclusion, and close-request relay', () => 
     expect(items[0]?.envelope.to).toBe('device-b');
   });
 });
+
+describe('byte-cap enforcement', () => {
+  it('rejects a message whose UTF-16 length is under the cap but whose UTF-8 byte length exceeds it', async () => {
+    const room = 'byte-cap-1';
+    const tokenA = await registerDevice(room, 'device-a');
+    const tokenB = await registerDevice(room, 'device-b', {
+      asDevice: 'device-a',
+      token: tokenA,
+    });
+    const a = await openAuthorizedSocket(room, 'device-a', tokenA);
+    const b = await openAuthorizedSocket(room, 'device-b', tokenB);
+
+    const oversized = JSON.stringify({
+      v: 2,
+      room,
+      device: 'device-a',
+      to: 'device-b',
+      kind: 'handoff',
+      iv: 'x',
+      ciphertext: '€'.repeat(25_000), // 1 UTF-16 unit, 3 UTF-8 bytes each
+      ts: 1,
+    });
+    expect(oversized.length).toBeLessThanOrEqual(MAX_PAYLOAD_BYTES);
+    expect(new TextEncoder().encode(oversized).length).toBeGreaterThan(
+      MAX_PAYLOAD_BYTES,
+    );
+
+    let bReceived = false;
+    b.addEventListener('message', () => {
+      bReceived = true;
+    });
+    a.send(oversized);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(bReceived).toBe(false);
+
+    a.close();
+    b.close();
+  });
+});

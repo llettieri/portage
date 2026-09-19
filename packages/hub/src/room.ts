@@ -327,6 +327,7 @@ export class Room implements DurableObject {
   webSocketMessage(sender: WebSocket, message: string | ArrayBuffer): void {
     if (typeof message !== 'string') return;
     if (message.length > MAX_PAYLOAD_BYTES) return;
+    if (new TextEncoder().encode(message).length > MAX_PAYLOAD_BYTES) return;
     if (!this.checkRateLimit()) return;
 
     let envelope: Envelope;
