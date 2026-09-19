@@ -70,12 +70,14 @@ interface Envelope {
   room: string         // room id
   device: string       // sending device id
   to: string           // recipient device id, or 'all'
-  kind: 'handoff' | 'presence' | 'stash'
+  kind: 'handoff' | 'presence' | 'stash' | 'close-request'
   iv: string           // base64, 96-bit, fresh per message
   ciphertext: string   // base64 AES-GCM
   ts: number           // sender clock, milliseconds
 }
 ```
+
+`v` is `2` as of live-sync; a `v: 1` peer and a `v: 2` peer fail decryption loudly against each other rather than silently misinterpreting the payload.
 
 The header fields (`v`, `room`, `device`, `to`, `kind`, `ts`) are cleartext because the hub
 routes on them. They are **not** unauthenticated: they are bound into the ciphertext as
@@ -101,8 +103,14 @@ Payloads are JSON, encrypted. Each `kind` has a fixed payload shape, validated a
 rather than cast blindly:
 
 - `handoff` — `{ url: string, title: string }`. One tab.
-- `presence` — `{ tabs: Array<{ url: string, title: string }> }`. A snapshot of what is open on
-  the sending device.
+- `presence` — `{ tabs: TabRef[], truncated?: boolean, snapshotTs: number }`, where `TabRef` is
+  `{ url: string, title: string, lastAccessed?: number }`. A snapshot of what is open on the
+  sending device, gzip-compressed before encryption at `v: 2`. `truncated` is set when the sender
+  had to drop tabs to fit the envelope size cap; a receiver MUST surface it rather than presenting
+  a silently short list.
+- `close-request` — `{ url: string, requestedAt: number }`. Addressed to the tab's origin device;
+  asks it to close that one real tab if still open. Matched by exact URL equality only, and
+  dropped if older than `CLOSE_REQUEST_TTL_MS` (1 hour) by the time it's processed.
 - `stash` — `StashItem[]`. Reserved. Its semantics are deliberately unspecified; the system
   holds no shared mutable state today (§7.4).
 
@@ -139,13 +147,24 @@ The effect: a header field cannot be altered in transit. Relabelling a `stash` e
 `handoff`, or rewriting `device` to reattribute a message, makes decryption fail. Both ends MUST
 derive the AAD from the header they actually have, never from a cached copy.
 
-### 5.4 Passphrase verification
+### 5.4 Compression at v2
+
+At envelope version 2, the JSON payload is gzip-compressed before encryption
+(`CompressionStream('gzip')`/`DecompressionStream('gzip')`), then encrypted exactly as before. The
+envelope version is bound into the AAD, so a version mismatch between peers fails decryption with
+a named error rather than corrupting or silently misreading the payload.
+
+One exception: the passphrase key-check value (`KEY_CHECK_VALUE`, stored in `roomConfig`) stays
+uncompressed. It predates the v2 compression path, and changing its representation would
+invalidate the stored key-check for every existing room.
+
+### 5.5 Passphrase verification
 
 On unlock, the extension encrypts and decrypts a fixed key-check value with the derived key. A
 wrong passphrase MUST be reported plainly in the UI. It MUST NOT present as an empty inbox or as
 silence — an indistinguishable failure mode is the worst outcome here.
 
-### 5.5 Where key material lives
+### 5.6 Where key material lives
 
 The passphrase is held in **session** storage, not local storage: it survives service-worker
 termination but not a browser restart. The derived `CryptoKey` is re-derived from it on demand
@@ -206,8 +225,10 @@ Three tables in the Durable Object's SQLite:
 
 - `devices` — device id, hashed token, revoked flag, creation time.
 - `pairing_codes` — code, expiry, used flag.
-- `inbox` — row id, recipient device, the envelope as stored, creation time. Indexed by
-  recipient.
+- `inbox` — row id, recipient device, **sender device, kind**, the envelope as stored, creation
+  time. Indexed by recipient, and by `(recipient, sender, kind)` for presence upserts. A `kind:
+  'presence'` row is upserted per `(recipient, sender)` — a newer snapshot replaces the pending
+  one rather than queueing behind it — while every other kind queues as a log, as before.
 
 Envelopes are stored exactly as received. The hub MUST NOT attempt to read a payload, and MUST
 NOT log one. Logging a `kind` is acceptable; logging an envelope body is not.
@@ -221,6 +242,8 @@ NOT log one. Logging a `kind` is acceptable; logging an envelope body is not.
 | Rate limit | 60 messages per 10-second window, per room |
 | Pairing code TTL | 5 minutes, single use |
 | Queue item expiry | 30 days |
+| Presence row expiry | 1 hour, separate from the 30-day queue expiry |
+| Presence rows | excluded from the max-queue-depth-per-device cap |
 
 An over-cap queue drops the new item for that device rather than evicting an old one or
 partially delivering to some devices and not others. Expiry is swept opportunistically on
@@ -274,6 +297,19 @@ The Durable Object serialises writes, so per-room ordering is well defined. Reci
 tolerate a redelivered frame — a crash between drain and ack legitimately produces one — and MUST
 deduplicate on frame id rather than storing it twice.
 
+### 7.6 Live-sync delivery
+
+Each device publishes a snapshot of only its **own** open tabs; no other device ever writes to
+it. A receiver's copy of a remote device's snapshot is **replaced wholesale**, never merged —
+this is what keeps the mirror window a pure function of the last snapshot held per device, and
+why live-sync needs no CRDT any more than the rest of the system does.
+
+Publishing is **change-gated**: a device hashes its filtered, ordered tab list on each periodic
+tick and only sends when that hash differs from the last one it successfully sent. Silence is not
+staleness — a device with a stable tab set correctly publishes nothing for hours, and nothing
+expires a remote's mirrors on a timer. A remote's mirrors are dropped only on revocation or an
+explicit local action (unlocking the toggle off, or closing the mirror window).
+
 ---
 
 ## 8. Extension behaviour
@@ -316,10 +352,12 @@ Received items are stored as a **list**, keyed by frame id, and rendered in the 
 arrivals are the normal case under broadcast. A duplicate id MUST NOT create a second entry. The
 list is capped, dropping oldest first.
 
-**A received URL MUST NOT be opened automatically, ever.** The person clicks to open. Only
-`http:` and `https:` schemes are accepted; anything else is discarded on arrival. This holds
+**A received handoff URL MUST NOT be opened automatically, ever.** The person clicks to open.
+Only `http:` and `https:` schemes are accepted; anything else is discarded on arrival. This holds
 permanently and regardless of how trusted the room is — automatic navigation would turn any
-compromise of the room into remote page-opening in the person's browser.
+compromise of the room into remote page-opening in the person's browser. Live-sync mirror tabs
+(§8.7) are the single, narrowly-scoped exception: they are created inactive, confined to the
+mirror window, and make no network request until the person looks at them.
 
 Opening or dismissing an item removes it from that device only.
 
@@ -344,6 +382,35 @@ unload within seconds and ports cannot prevent it.
 Configured by the person, stored locally. It MUST be `ws://` or `wss://`. An `https://` URL MUST
 be rejected loudly rather than coerced — silently downgrading would put a bearer token on the
 wire in cleartext.
+
+### 8.7 Live sync
+
+A per-device `liveSync` toggle, default off. On: the device publishes its own tab snapshots and
+renders every other device's last-known snapshot as real tabs in a dedicated mirror window.
+
+**The origin rule.** A tab is a mirror if and only if its URL is on the extension's own origin
+(`mirror.html?…`). Not a stored tab id, not window membership. This is what makes mirror state
+recoverable after a restart with zero persisted identity, what prevents a mirror-of-a-mirror
+feedback loop (a publisher excludes every tab on its own extension origin), and what keeps the
+reconciler from ever closing a tab the person opened themselves.
+
+**Mirror tabs are lazy.** Created inactive at `mirror.html?d=<deviceId>&u=<url>&t=<title>`; they
+navigate to the real URL only when the person first looks at them (`document.visibilityState`
+becomes `visible`), and make no network request before that. The moment a mirror is visited, it
+leaves the extension origin and becomes an ordinary tab of the viewer's — published like any
+other, untouched by the reconciler, unaffected by a later `close-request` for that URL.
+
+**Reconciliation** diffs the desired set (the first `MAX_MIRROR_TABS_PER_DEVICE` — 50 — tabs of
+each remote device's stored snapshot, duplicate URLs collapsed) against the mirror window's
+current extension-origin tabs, creating and closing only what differs. A person closing a mirror
+by hand sends a `close-request` to its origin device; if the origin doesn't act, the mirror
+reappears at the next snapshot from that device — that's honest behavior, not a bug. A sentinel
+page, pinned first in the mirror window, lists every tab beyond the per-device cap as a clickable
+link and surfaces the sender's `truncated` flag plainly.
+
+**Window lifecycle.** The mirror window is found by querying for the sentinel URL, created on
+first reconcile once `liveSync` is on, and — if the person closes it — the toggle turns itself
+off rather than the window reappearing a minute later.
 
 ---
 
@@ -370,6 +437,12 @@ Pairing happens between their own browsers; no out-of-band channel is verified.
 extension in the same browser, and the hub operator correlating metadata. All out of scope for a
 personal tool.
 
+Under live-sync's change-gated publishing, every message the hub sees is the signal "this
+device's tab set just changed" — a cleaner timeline than a constant heartbeat would give,
+though traffic analysis remains a deliberate non-defence as stated above. No new cleartext
+header field carries a device label; the hub still never learns a human-readable identity for
+any device.
+
 ---
 
 ## 10. Distribution
@@ -395,7 +468,9 @@ The Chromium build is loaded unpacked. It is not submitted to any store.
 The short list. A change that violates one of these is a change of direction.
 
 1. The hub never sees plaintext.
-2. A received URL is never opened without a human click.
+2. A received URL is never navigated to in a foreground tab of the person's ordinary browsing
+   session, and is never loaded at all outside the dedicated mirror window. Handoff items are
+   click-only, always.
 3. A wire-format change lands in every package that speaks it, simultaneously.
 4. No code path assumes exactly two devices.
 5. Delivery never requires two devices to be awake at once.

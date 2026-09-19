@@ -20,11 +20,12 @@ packages/
 
 pnpm workspaces. `protocol` is a `workspace:*` dependency of the other two.
 
-Three message kinds, all through the same encrypted envelope:
+Four message kinds, all through the same encrypted envelope:
 
 - **handoff** — "send this tab to device X". Queued per recipient device, deleted on ack.
 - **presence** — periodic snapshot of open tabs. Replaces, never merges.
 - **stash** — shared list of saved links. Serialised by the DO.
+- **close-request** — "close this one real tab". Addressed to the tab's origin device, matched by exact URL, dropped if stale.
 
 ## Hard constraints
 
@@ -64,8 +65,11 @@ These are deliberate decisions, not oversights. Do not "modernise" them without 
    single-threaded per room, which is also why there is no CRDT anywhere in this project:
    it provides a total order for free.
 
-7. **The Zen bookmark mirror writes into one dedicated folder and reads nothing back.**
-   Anything outside that folder is the user's own and must never be touched.
+7. **A tab is a mirror iff its URL is on the extension's own origin
+   (`mirror.html?…`) — never a tab id, never window membership.** Tab ids do not survive a
+   restart and are reused; tracking mirror identity by id would let the reconciler close one of
+   the person's own tabs. This is the entire correctness argument for live-sync's mirror window —
+   do not "simplify" it into a stored tab-id registry. See `docs/SPEC.md` §8.7.
 
 8. **Arc's pinned tabs and Spaces are out of scope.** They live in a private
    `StorableSidebar.json` that extensions cannot read, and reaching them would require
