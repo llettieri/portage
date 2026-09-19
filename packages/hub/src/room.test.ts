@@ -3,6 +3,7 @@ import { env, runInDurableObject, SELF } from 'cloudflare:test';
 import {
   MAX_PAYLOAD_BYTES,
   MAX_QUEUE_DEPTH_PER_DEVICE,
+  PRESENCE_EXPIRY_MS,
   RATE_LIMIT_MAX_MESSAGES,
 } from './limits.js';
 
@@ -917,5 +918,265 @@ describe('CORS', () => {
     );
     expect(res.status).toBe(401);
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+  });
+});
+
+describe('presence upsert and schema migration', () => {
+  it('leaves one inbox row — the newer — for two presence envelopes from the same sender to the same recipient', async () => {
+    const room = 'presence-upsert-1';
+    const tokenA = await registerDevice(room, 'device-a');
+    const tokenB = await registerDevice(room, 'device-b', {
+      asDevice: 'device-a',
+      token: tokenA,
+    });
+
+    const envelope = (ts: number): string =>
+      JSON.stringify({
+        v: 2,
+        room,
+        device: 'device-a',
+        to: 'device-b',
+        kind: 'presence',
+        iv: 'x',
+        ciphertext: 'y',
+        ts,
+      });
+
+    const a = await openAuthorizedSocket(room, 'device-a', tokenA);
+    a.send(envelope(1));
+    a.send(envelope(2));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    a.close();
+
+    const drainRes = await SELF.fetch(
+      `https://example.com/room/${room}/inbox/drain`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tokenB}` },
+        body: JSON.stringify({ device: 'device-b' }),
+      },
+    );
+    const { items } = (await drainRes.json()) as {
+      items: Array<{ envelope: { ts: number } }>;
+    };
+    expect(items).toHaveLength(1);
+    expect(items[0]?.envelope.ts).toBe(2);
+  });
+
+  it('gains new inbox columns without losing existing rows, idempotently', async () => {
+    const room = 'migration-test-1';
+    await registerDevice(room, 'device-a');
+
+    const id = env.ROOM.idFromName(room);
+    const stub = env.ROOM.get(id);
+    await runInDurableObject(
+      stub,
+      async (_instance: unknown, state: DurableObjectState) => {
+        // Simulate a room whose inbox predates this migration: insert a row, then drop the
+        // index and columns this migration adds so the table is back in the old shape.
+        // (SQLite refuses to drop a column that's part of an index, so the index goes
+        // first — undoing Step 2's own CREATE INDEX purely for this simulation.)
+        state.storage.sql.exec(
+          "INSERT INTO inbox (id, to_device, sender_device, kind, envelope, created_at) VALUES ('legacy-1', 'device-a', 'device-b', 'handoff', '{}', ?)",
+          Date.now(),
+        );
+        state.storage.sql.exec('DROP INDEX IF EXISTS inbox_presence_idx');
+        state.storage.sql.exec('ALTER TABLE inbox DROP COLUMN sender_device');
+        state.storage.sql.exec('ALTER TABLE inbox DROP COLUMN kind');
+
+        // Re-run the exact migration guard a fresh cold start would run against this
+        // now-old-shape table — twice, to prove it's idempotent across repeat deploys.
+        for (let i = 0; i < 2; i++) {
+          const ddl =
+            state.storage.sql
+              .exec<{ sql: string }>(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'inbox'",
+              )
+              .toArray()[0]?.sql ?? '';
+          if (!ddl.includes('sender_device')) {
+            state.storage.sql.exec(
+              'ALTER TABLE inbox ADD COLUMN sender_device TEXT',
+            );
+          }
+          if (!ddl.includes('kind')) {
+            state.storage.sql.exec(
+              "ALTER TABLE inbox ADD COLUMN kind TEXT NOT NULL DEFAULT 'handoff'",
+            );
+          }
+        }
+        state.storage.sql.exec(
+          'CREATE INDEX IF NOT EXISTS inbox_presence_idx ON inbox (to_device, sender_device, kind)',
+        );
+
+        const rows = state.storage.sql
+          .exec<{ id: string; kind: string }>(
+            'SELECT id, kind FROM inbox WHERE id = ?',
+            'legacy-1',
+          )
+          .toArray();
+        expect(rows).toHaveLength(1);
+        expect(rows[0]?.kind).toBe('handoff');
+      },
+    );
+  });
+});
+
+describe('presence expiry, depth-cap exclusion, and close-request relay', () => {
+  it('does not return a presence row older than PRESENCE_EXPIRY_MS from drain', async () => {
+    const room = 'presence-expiry-1';
+    const tokenA = await registerDevice(room, 'device-a');
+    const tokenB = await registerDevice(room, 'device-b', {
+      asDevice: 'device-a',
+      token: tokenA,
+    });
+
+    const id = env.ROOM.idFromName(room);
+    const stub = env.ROOM.get(id);
+    await runInDurableObject(
+      stub,
+      async (_instance: unknown, state: DurableObjectState) => {
+        state.storage.sql.exec(
+          'INSERT INTO inbox (id, to_device, sender_device, kind, envelope, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+          'stale-presence',
+          'device-b',
+          'device-a',
+          'presence',
+          JSON.stringify({
+            v: 2,
+            room,
+            device: 'device-a',
+            to: 'device-b',
+            kind: 'presence',
+            iv: 'x',
+            ciphertext: 'stale',
+            ts: 1,
+          }),
+          Date.now() - PRESENCE_EXPIRY_MS - 1_000,
+        );
+      },
+    );
+
+    const drainRes = await SELF.fetch(
+      `https://example.com/room/${room}/inbox/drain`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tokenB}` },
+        body: JSON.stringify({ device: 'device-b' }),
+      },
+    );
+    const { items } = (await drainRes.json()) as { items: unknown[] };
+    expect(items).toHaveLength(0);
+  });
+
+  it('still delivers presence and still caps handoffs at 500 under mixed traffic', async () => {
+    const room = 'mixed-traffic-1';
+    const tokenA = await registerDevice(room, 'device-a');
+    const tokenB = await registerDevice(room, 'device-b', {
+      asDevice: 'device-a',
+      token: tokenA,
+    });
+
+    // Seed 500 already-queued handoffs directly — sending 500 live WS messages would trip
+    // the hub's 60-messages/10s rate limit, which is a separate, unrelated guard.
+    const id = env.ROOM.idFromName(room);
+    const stub = env.ROOM.get(id);
+    await runInDurableObject(
+      stub,
+      async (_instance: unknown, state: DurableObjectState) => {
+        for (let i = 0; i < MAX_QUEUE_DEPTH_PER_DEVICE; i++) {
+          state.storage.sql.exec(
+            "INSERT INTO inbox (id, to_device, sender_device, kind, envelope, created_at) VALUES (?, 'device-b', 'device-a', 'handoff', ?, ?)",
+            `handoff-${i}`,
+            JSON.stringify({ kind: 'handoff' }),
+            Date.now(),
+          );
+        }
+      },
+    );
+
+    const a = await openAuthorizedSocket(room, 'device-a', tokenA);
+    a.send(
+      JSON.stringify({
+        v: 2,
+        room,
+        device: 'device-a',
+        to: 'device-b',
+        kind: 'presence',
+        iv: 'x',
+        ciphertext: 'presence-1',
+        ts: 9999,
+      }),
+    );
+    a.send(
+      JSON.stringify({
+        v: 2,
+        room,
+        device: 'device-a',
+        to: 'device-b',
+        kind: 'handoff',
+        iv: 'x',
+        ciphertext: 'over-cap',
+        ts: 10_000,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    a.close();
+
+    const drainRes = await SELF.fetch(
+      `https://example.com/room/${room}/inbox/drain`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tokenB}` },
+        body: JSON.stringify({ device: 'device-b' }),
+      },
+    );
+    const { items } = (await drainRes.json()) as {
+      items: Array<{ envelope: { kind: string } }>;
+    };
+    expect(items.filter((i) => i.envelope.kind === 'handoff')).toHaveLength(
+      MAX_QUEUE_DEPTH_PER_DEVICE,
+    );
+    expect(items.filter((i) => i.envelope.kind === 'presence')).toHaveLength(1);
+  });
+
+  it('routes a close-request to the addressed device only, and queues it when offline', async () => {
+    const room = 'close-request-1';
+    const tokenA = await registerDevice(room, 'device-a');
+    const tokenB = await registerDevice(room, 'device-b', {
+      asDevice: 'device-a',
+      token: tokenA,
+    });
+
+    // device-b is offline (no socket) when the close-request arrives.
+    const a = await openAuthorizedSocket(room, 'device-a', tokenA);
+    a.send(
+      JSON.stringify({
+        v: 2,
+        room,
+        device: 'device-a',
+        to: 'device-b',
+        kind: 'close-request',
+        iv: 'x',
+        ciphertext: 'close-1',
+        ts: 1,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    a.close();
+
+    const drainRes = await SELF.fetch(
+      `https://example.com/room/${room}/inbox/drain`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tokenB}` },
+        body: JSON.stringify({ device: 'device-b' }),
+      },
+    );
+    const { items } = (await drainRes.json()) as {
+      items: Array<{ envelope: { kind: string; to: string } }>;
+    };
+    expect(items).toHaveLength(1);
+    expect(items[0]?.envelope.kind).toBe('close-request');
+    expect(items[0]?.envelope.to).toBe('device-b');
   });
 });
