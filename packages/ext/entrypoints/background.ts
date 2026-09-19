@@ -9,11 +9,13 @@ import {
   encrypt,
   encodePairingPayload,
   fromBase64,
+  MAX_PAYLOAD_BYTES,
   openEnvelope,
   toBase64,
   toHttpBase,
   type HandoffPayload,
   type InboxDrainResponse,
+  type PresencePayload,
   type RelayFrame,
 } from 'protocol';
 import {
@@ -23,14 +25,19 @@ import {
   clearPendingHandoffs,
   clearRoomConfig,
   getDeviceId,
+  getLastSnapshotHash,
+  getLiveSync,
   getRoomConfig,
   getStoredPassphrase,
   setConnected,
   setDecryptError,
+  setLastSnapshotHash,
+  setLiveSyncError,
   setRoomConfig,
   setStoredPassphrase,
   type RoomConfig,
 } from '../lib/state.js';
+import { filterPublishableTabs, hashTabSet } from '../lib/liveSync.js';
 
 const RECONNECT_ALARM = 'portage-reconnect';
 const KEY_CHECK_VALUE = 'portage-key-check-v1';
@@ -55,6 +62,86 @@ async function resolveCryptoKey(): Promise<CryptoKey | null> {
     config.iterations,
   );
   return cachedCryptoKey;
+}
+
+function extensionOrigin(): string {
+  return browser.runtime.getURL('').replace(/\/$/, '');
+}
+
+async function publishPresence(): Promise<void> {
+  const liveSync = await getLiveSync();
+  if (!liveSync) return;
+  const config = await getRoomConfig();
+  if (!config) {
+    await setLiveSyncError('no room configured');
+    return;
+  }
+  const cryptoKey = await resolveCryptoKey();
+  if (!cryptoKey) {
+    await setLiveSyncError('room is locked');
+    return;
+  }
+  // publishPresence runs fire-and-forget alongside connect() on the same alarm tick — wait
+  // for a connection attempt here rather than only checking whatever state a *previous*
+  // tick left behind, or almost every tick right after a worker restart reports "not
+  // connected" even though a connection is actually in progress.
+  await connect().catch(() => {});
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    await setLiveSyncError('not connected to hub');
+    return;
+  }
+
+  const deviceId = await getDeviceId();
+  const rawTabs = await browser.tabs.query({});
+  const tabs = filterPublishableTabs(rawTabs, extensionOrigin());
+  const hash = await hashTabSet(tabs);
+  const previousHash = await getLastSnapshotHash();
+  if (hash === previousHash) {
+    await setLiveSyncError(null);
+    return;
+  }
+
+  let candidateTabs = tabs;
+  let truncated = false;
+  let envelope = await buildEnvelope(
+    cryptoKey,
+    { room: config.roomId, device: deviceId, to: 'all', kind: 'presence' },
+    {
+      tabs: candidateTabs,
+      truncated,
+      snapshotTs: Date.now(),
+    } satisfies PresencePayload,
+  );
+  while (
+    new TextEncoder().encode(JSON.stringify(envelope)).length >
+      MAX_PAYLOAD_BYTES &&
+    candidateTabs.length > 0
+  ) {
+    candidateTabs = candidateTabs.slice(0, -1);
+    truncated = true;
+    envelope = await buildEnvelope(
+      cryptoKey,
+      { room: config.roomId, device: deviceId, to: 'all', kind: 'presence' },
+      {
+        tabs: candidateTabs,
+        truncated,
+        snapshotTs: Date.now(),
+      } satisfies PresencePayload,
+    );
+  }
+  if (
+    new TextEncoder().encode(JSON.stringify(envelope)).length > MAX_PAYLOAD_BYTES
+  ) {
+    // Truncated all the way to zero tabs and it *still* doesn't fit — the envelope
+    // overhead alone exceeds the cap. Vanishingly unlikely, but report it rather than
+    // silently sending an oversized message the hub will reject.
+    await setLiveSyncError('snapshot too large to send, even with zero tabs');
+    return;
+  }
+
+  socket.send(JSON.stringify(envelope));
+  await setLastSnapshotHash(hash);
+  await setLiveSyncError(null);
 }
 
 async function computeKeyCheck(
@@ -415,6 +502,7 @@ export default defineBackground({
       if (alarm.name === RECONNECT_ALARM) {
         void connect().catch(() => {});
         void drainInbox();
+        void publishPresence();
       }
     });
 
