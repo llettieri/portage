@@ -40,9 +40,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # The tag (ext-1.2.3, or ext-1.2.3-beta.1 for a pre-release) is the
-      # source of truth for the release; make sure nobody tagged a commit
-      # whose package.json was never bumped to match.
+      # The tag (ext-1.2.3, or ext-1.2.3-beta.1 for a pre-release) is the source of truth for the release
+      # make sure nobody tagged a commit whose package.json was never bumped to match
       - name: Check tag matches package version
         id: version
         run: |
