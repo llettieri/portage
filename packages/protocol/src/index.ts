@@ -40,3 +40,4 @@ export type { BackoffOptions } from './reconnect.js';
 export { decodePairingPayload, encodePairingPayload } from './pairing.js';
 export { buildConnectUrl, toHttpBase } from './hubUrl.js';
 export { fromBase64, toBase64 } from './base64.js';
+export { gunzip, gzip } from './gzip.js';
