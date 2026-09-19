@@ -1,4 +1,5 @@
 import type { PresencePayload, TabRef } from 'protocol';
+import type { MirrorTabInfo } from './state.js';
 
 const MIRROR_PATH = 'mirror.html';
 
@@ -11,7 +12,7 @@ export function isHttpUrl(url: string): boolean {
   }
 }
 
-// The origin rule (spec §2): a tab is a mirror iff its URL is on the extension origin.
+// The origin rule (spec §8.7): a tab is a mirror iff its URL is on the extension origin.
 // `extensionOrigin` MUST be the origin with no trailing slash (e.g.
 // "chrome-extension://<id>", not "chrome-extension://<id>/").
 export function isMirrorUrl(url: string, extensionOrigin: string): boolean {
@@ -62,7 +63,8 @@ export interface QueryableTab {
 
 // Sender-side half of the origin rule: drop every tab on the extension origin (prevents
 // the mirror feedback loop) and anything not http(s). Sorted by lastAccessed descending so
-// the publisher's truncation step (spec §3.5) can drop from the end.
+// the publisher's truncation step (spec §4.3 — `truncated` when tabs are dropped to fit
+// the envelope size cap) can drop from the end.
 export function filterPublishableTabs(
   tabs: QueryableTab[],
   extensionOrigin: string,
@@ -82,8 +84,9 @@ export function filterPublishableTabs(
     .sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0));
 }
 
-// The hash MUST NOT cover volatile fields (spec §4.2) — only url and title, in the given
-// order. lastAccessed churns on every tab switch and must never affect this.
+// The hash MUST NOT cover volatile fields (spec §7.6 — change-gated publishing hashes the
+// filtered, ordered tab list) — only url and title, in the given order. lastAccessed churns
+// on every tab switch and must never affect this.
 export async function hashTabSet(
   tabs: Array<{ url: string; title: string }>,
 ): Promise<string> {
@@ -104,9 +107,10 @@ export interface DesiredMirror {
 }
 
 // Desired mirror set = for each remote device, the first maxPerDevice tabs of its stored
-// snapshot, duplicate URLs within one device collapsed to one (spec §4.5), minus any URL
+// snapshot, duplicate URLs within one device collapsed to one (spec §8.7), minus any URL
 // the person just dismissed for that device (manually closed — stays gone until that
-// device's next genuinely new snapshot, spec §4.5's "until the next snapshot").
+// device's next genuinely new snapshot, spec §8.7's "the mirror reappears at the next
+// snapshot from that device").
 export function computeDesiredMirrors(
   remoteSnapshots: Record<string, PresencePayload>,
   maxPerDevice: number,
@@ -163,4 +167,37 @@ export function isCloseRequestExpired(
   ttlMs: number,
 ): boolean {
   return now - requestedAt > ttlMs;
+}
+
+export type TabRemovalClassification =
+  | { kind: 'reconciler-initiated' }
+  | { kind: 'window-closed' }
+  | { kind: 'manual-mirror-close'; info: MirrorTabInfo }
+  | { kind: 'ignore' };
+
+// The single most safety-critical decision in live-sync: whether a closed tab should fire
+// a close-request that closes a real tab on another device. Kept pure (no browser.*) so it
+// can be exhaustively tested — see liveSync.test.ts for the branches this must get right.
+export function classifyTabRemoval(params: {
+  tabId: number;
+  isWindowClosing: boolean;
+  closingTabIds: number[];
+  sentinelTabId: number | null;
+  mirrorTabIndex: Record<number, MirrorTabInfo>;
+}): TabRemovalClassification {
+  const {
+    tabId,
+    isWindowClosing,
+    closingTabIds,
+    sentinelTabId,
+    mirrorTabIndex,
+  } = params;
+  if (closingTabIds.includes(tabId)) return { kind: 'reconciler-initiated' };
+  const isOwnTab = tabId === sentinelTabId || tabId in mirrorTabIndex;
+  if (!isOwnTab) return { kind: 'ignore' };
+  if (isWindowClosing || tabId === sentinelTabId)
+    return { kind: 'window-closed' };
+  const info = mirrorTabIndex[tabId];
+  if (!info) return { kind: 'ignore' };
+  return { kind: 'manual-mirror-close', info };
 }

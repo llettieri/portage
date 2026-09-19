@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildMirrorUrl,
   buildSentinelUrl,
+  classifyTabRemoval,
   computeDesiredMirrors,
   diffMirrorTabs,
   filterPublishableTabs,
@@ -249,6 +250,72 @@ describe('diffMirrorTabs', () => {
       toCreate: [],
       toCloseIds: [1],
     });
+  });
+});
+
+describe('classifyTabRemoval', () => {
+  it('classifies a tab in closingTabIds as reconciler-initiated, regardless of other state', () => {
+    expect(
+      classifyTabRemoval({
+        tabId: 7,
+        isWindowClosing: true,
+        closingTabIds: [7],
+        sentinelTabId: 7,
+        mirrorTabIndex: { 7: { deviceId: 'device-a', url: 'https://a.com' } },
+      }),
+    ).toEqual({ kind: 'reconciler-initiated' });
+  });
+
+  it('classifies a tracked mirror tab closing with its window as window-closed', () => {
+    expect(
+      classifyTabRemoval({
+        tabId: 3,
+        isWindowClosing: true,
+        closingTabIds: [],
+        sentinelTabId: 99,
+        mirrorTabIndex: { 3: { deviceId: 'device-a', url: 'https://a.com' } },
+      }),
+    ).toEqual({ kind: 'window-closed' });
+  });
+
+  it('classifies the sentinel tab itself as window-closed, even without isWindowClosing', () => {
+    expect(
+      classifyTabRemoval({
+        tabId: 99,
+        isWindowClosing: false,
+        closingTabIds: [],
+        sentinelTabId: 99,
+        mirrorTabIndex: {},
+      }),
+    ).toEqual({ kind: 'window-closed' });
+  });
+
+  it('classifies a manually closed tracked mirror (window staying open) as manual-mirror-close', () => {
+    const info = { deviceId: 'device-a', url: 'https://a.com' };
+    expect(
+      classifyTabRemoval({
+        tabId: 3,
+        isWindowClosing: false,
+        closingTabIds: [],
+        sentinelTabId: 99,
+        mirrorTabIndex: { 3: info },
+      }),
+    ).toEqual({ kind: 'manual-mirror-close', info });
+  });
+
+  it('ignores an untracked tab from an unrelated window closing, even with isWindowClosing true', () => {
+    // This is the bug this whole review cycle found: isWindowClosing alone must never be
+    // read as "the mirror window closed" — it's true for every tab of ANY window that just
+    // closed, not only the mirror window.
+    expect(
+      classifyTabRemoval({
+        tabId: 42,
+        isWindowClosing: true,
+        closingTabIds: [],
+        sentinelTabId: 99,
+        mirrorTabIndex: { 3: { deviceId: 'device-a', url: 'https://a.com' } },
+      }),
+    ).toEqual({ kind: 'ignore' });
   });
 });
 

@@ -13,6 +13,7 @@ import {
   MAX_MIRROR_TABS_PER_DEVICE,
   MAX_PAYLOAD_BYTES,
   openEnvelope,
+  PRESENCE_EXPIRY_MS,
   toBase64,
   toHttpBase,
   type CloseRequestPayload,
@@ -35,6 +36,7 @@ import {
   getClosingTabIds,
   getDeviceId,
   getDismissedMirrors,
+  getLastPublishedAt,
   getLastSnapshotHash,
   getLiveSync,
   getMirrorTabIndex,
@@ -45,6 +47,7 @@ import {
   removeClosingTabId,
   setConnected,
   setDecryptError,
+  setLastPublishedAt,
   setLastSnapshotHash,
   setLiveSync,
   setLiveSyncError,
@@ -59,6 +62,7 @@ import {
 import {
   buildMirrorUrl,
   buildSentinelUrl,
+  classifyTabRemoval,
   computeDesiredMirrors,
   diffMirrorTabs,
   filterPublishableTabs,
@@ -98,6 +102,18 @@ function extensionOrigin(): string {
   return browser.runtime.getURL('').replace(/\/$/, '');
 }
 
+// The origin rule (spec §8.7) cuts both ways: a mirror that navigates away from the
+// extension origin is an ordinary tab from that moment on, and must stop being tracked as
+// a mirror everywhere — the reconciler (already URL-driven) and this index alike.
+async function handleTabUpdated(tabId: number, url: string): Promise<void> {
+  if (isMirrorUrl(url, extensionOrigin())) return;
+  const index = await getMirrorTabIndex();
+  if (!(tabId in index)) return;
+  const rest = { ...index };
+  delete rest[tabId];
+  await setMirrorTabIndex(rest);
+}
+
 async function publishPresence(): Promise<void> {
   const liveSync = await getLiveSync();
   if (!liveSync) return;
@@ -126,7 +142,16 @@ async function publishPresence(): Promise<void> {
   const tabs = filterPublishableTabs(rawTabs, extensionOrigin());
   const hash = await hashTabSet(tabs);
   const previousHash = await getLastSnapshotHash();
-  if (hash === previousHash) {
+  const lastPublishedAt = await getLastPublishedAt();
+  // An unchanged hash normally means "nothing to publish" (spec §7.6's change-gated
+  // publishing) — but a newly-paired or long-offline peer needs a fresh copy regardless,
+  // since the hub expires presence rows after PRESENCE_EXPIRY_MS and a device whose own
+  // tabs never change would otherwise never resend. Force a republish once the last one is
+  // stale enough that the hub's copy may already be gone.
+  const isStale =
+    lastPublishedAt === null ||
+    Date.now() - lastPublishedAt > PRESENCE_EXPIRY_MS / 2;
+  if (hash === previousHash && !isStale) {
     await setLiveSyncError(null);
     return;
   }
@@ -172,6 +197,7 @@ async function publishPresence(): Promise<void> {
 
   socket.send(JSON.stringify(envelope));
   await setLastSnapshotHash(hash);
+  await setLastPublishedAt(Date.now());
   await setLiveSyncError(null);
 }
 
@@ -258,11 +284,13 @@ async function doReconcile(): Promise<void> {
   }
 
   for (const mirror of toCreate) {
-    // SHOULD skip creating a mirror when the same URL is already open locally outside the
-    // mirror window (spec §4.5) — mirroring a tab the person already has open is noise.
-    const alreadyOpenElsewhere = allTabs.some(
-      (tab) => tab.url === mirror.url && tab.windowId !== windowId,
-    );
+    // Skip creating a mirror when its URL is already open in any tab, anywhere — mirroring
+    // a tab the person already has open is noise. This includes a visited mirror: once a
+    // mirror navigates to the real URL it leaves the extension origin (spec §8.7) and is an
+    // ordinary tab whose url === mirror.url, exactly the case this must not re-mirror. An
+    // unvisited mirror's own URL is always the mirror.html?… wrapper, never mirror.url
+    // itself, so this can only ever match a genuinely-already-open tab.
+    const alreadyOpenElsewhere = allTabs.some((tab) => tab.url === mirror.url);
     if (alreadyOpenElsewhere) continue;
     const createdTab = await browser.tabs.create({
       windowId,
@@ -326,14 +354,15 @@ async function applyPayload(
       JSON.stringify(existing.tabs) === JSON.stringify(presence.tabs);
     // A redelivered (duplicate) frame is identical to what's already stored — skip the
     // write entirely, not just the reconcile, so it doesn't fire storage.onChanged and
-    // churn the popup/sentinel on every redelivery (spec §4.3).
+    // churn the popup/sentinel on every redelivery (spec §7.5 — recipients MUST tolerate a
+    // redelivered frame).
     if (isIdentical) return;
     await setRemoteSnapshot(senderDeviceId, {
       ...presence,
       receivedAt: Date.now(),
     });
     // A genuinely new snapshot from this device is "the next snapshot" any locally
-    // dismissed (manually closed) mirror for it was waiting for (spec §4.5) — clear the
+    // dismissed (manually closed) mirror for it was waiting for (spec §8.7) — clear the
     // dismissal whether or not the new snapshot still contains that URL.
     await clearDismissedMirrorsForDevice(senderDeviceId);
     await reconcile();
@@ -376,50 +405,68 @@ async function sendCloseRequest(
   socket.send(JSON.stringify(envelope));
 }
 
+// Turning the toggle off (spec §8.7) is a local action: every mirror tab and the sentinel
+// must be torn down, and marking each id via addClosingTabId first means handleTabRemoved
+// treats these as reconciler-initiated closes (silent, no close-request) rather than manual
+// closes — going dark on live-sync must never notify another device.
+async function teardownMirrorWindow(): Promise<void> {
+  const index = await getMirrorTabIndex();
+  const sentinelTabId = await getSentinelTabId();
+  const idsToClose = Object.keys(index).map(Number);
+  if (sentinelTabId !== null) idsToClose.push(sentinelTabId);
+  for (const tabId of idsToClose) {
+    await addClosingTabId(tabId);
+    await browser.tabs.remove(tabId).catch(() => {});
+  }
+  await setMirrorTabIndex({});
+  await setSentinelTabId(null);
+}
+
 async function handleTabRemoved(
   tabId: number,
   removeInfo: { windowId: number; isWindowClosing: boolean },
 ): Promise<void> {
   const closingIds = await getClosingTabIds();
-  if (closingIds.includes(tabId)) {
+  const sentinelTabId = await getSentinelTabId();
+  const index = await getMirrorTabIndex();
+  const classification = classifyTabRemoval({
+    tabId,
+    isWindowClosing: removeInfo.isWindowClosing,
+    closingTabIds: closingIds,
+    sentinelTabId,
+    mirrorTabIndex: index,
+  });
+
+  if (classification.kind === 'reconciler-initiated') {
     // Reconciler-initiated close — clean up bookkeeping, send no close-request.
     await removeClosingTabId(tabId);
     await removeFromMirrorTabIndex(tabId);
     return;
   }
-
-  const sentinelTabId = await getSentinelTabId();
-  const index = await getMirrorTabIndex();
-  // removeInfo.isWindowClosing is true for every tab of ANY window that just closed, not
-  // only the mirror window — so it must be combined with "this tab is one we track" before
-  // it means anything. Without this check, closing an unrelated browser window would
-  // silently turn liveSync off. This is evaluated before the mirror-index-driven
-  // close-request branch below either way, so it still gates that path correctly.
-  const isOwnTab = tabId === sentinelTabId || tabId in index;
-  if (!isOwnTab) return;
-
-  if (removeInfo.isWindowClosing || tabId === sentinelTabId) {
+  if (classification.kind === 'window-closed') {
     // The whole mirror window went away — tabs.onRemoved fires once per tab it contained,
-    // not once for the window, so isWindowClosing MUST gate this: without it, every
-    // mirror tab in a closed window falls through to the "person closed one mirror by
-    // hand" branch below and fires a close-request for each one, closing real tabs on
-    // other devices. Pause, don't recreate it (spec §4.7) — the popup toggle turns it
-    // back on.
+    // not once for the window, so isWindowClosing MUST be combined with "this tab is one
+    // we track" before it means anything (classifyTabRemoval does this): without it,
+    // closing an unrelated browser window would silently turn liveSync off, or every
+    // mirror tab in a closed window would fall through to the "person closed one mirror by
+    // hand" branch and fire a close-request for each one, closing real tabs on other
+    // devices. Pause, don't recreate it (spec §8.7) — the popup toggle turns it back on.
     await setLiveSync(false);
     await setLiveSyncError(null);
     await setMirrorTabIndex({});
     await setSentinelTabId(null);
     return;
   }
-
-  const info = index[tabId];
-  if (!info) return;
-  // A person closed a mirror by hand: tell its origin device, then dismiss it locally so
-  // reconcile doesn't immediately recreate it. It reappears once the origin publishes a
-  // genuinely new snapshot (spec §4.5; the dismissal is cleared in Task 12).
-  await removeFromMirrorTabIndex(tabId);
-  await addDismissedMirror(info.deviceId, info.url);
-  await sendCloseRequest(info.deviceId, info.url);
+  if (classification.kind === 'manual-mirror-close') {
+    const { info } = classification;
+    // A person closed a mirror by hand: tell its origin device, then dismiss it locally so
+    // reconcile doesn't immediately recreate it. It reappears once the origin publishes a
+    // genuinely new snapshot (spec §8.7; the dismissal is cleared by
+    // clearDismissedMirrorsForDevice() when that snapshot arrives).
+    await removeFromMirrorTabIndex(tabId);
+    await addDismissedMirror(info.deviceId, info.url);
+    await sendCloseRequest(info.deviceId, info.url);
+  }
 }
 
 async function computeKeyCheck(
@@ -729,7 +776,7 @@ async function handleIncomingFrame(data: unknown): Promise<void> {
 
   await setDecryptError(false);
   // Never open a received URL here — only store or act on it. A handoff is opened only by
-  // a direct popup click; a mirror tab only navigates on visibility (spec §4.4).
+  // a direct popup click (spec §8.4); a mirror tab only navigates on visibility (spec §8.7).
   await applyPayload(
     frame.envelope.kind,
     payload,
@@ -788,6 +835,11 @@ export default defineBackground({
     browser.tabs.onRemoved.addListener(
       (tabId, removeInfo) => void handleTabRemoved(tabId, removeInfo),
     );
+
+    browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
+      if (typeof changeInfo.url !== 'string') return;
+      void handleTabUpdated(tabId, changeInfo.url);
+    });
 
     browser.runtime.onMessage.addListener(
       (
@@ -884,7 +936,10 @@ export default defineBackground({
           void setLiveSync(message.value)
             .then(() => {
               if (!message.value) {
-                return setLiveSyncError(null);
+                return Promise.all([
+                  teardownMirrorWindow(),
+                  setLiveSyncError(null),
+                ]).then(() => undefined);
               }
               return Promise.all([publishPresence(), reconcile()]).then(
                 () => undefined,

@@ -161,6 +161,21 @@ export async function setLastSnapshotHash(hash: string): Promise<void> {
   await browser.storage.local.set({ lastSnapshotHash: hash });
 }
 
+// Tracked separately from lastSnapshotHash so publishPresence() can force a republish once
+// this is stale, even when the tab set itself hasn't changed — otherwise a newly-paired or
+// long-offline device could see an empty or stale mirror forever, since the hub expires
+// presence rows (PRESENCE_EXPIRY_MS) and an unchanging sender never resends on its own.
+export async function getLastPublishedAt(): Promise<number | null> {
+  const stored = await browser.storage.local.get('lastPublishedAt');
+  return typeof stored.lastPublishedAt === 'number'
+    ? stored.lastPublishedAt
+    : null;
+}
+
+export async function setLastPublishedAt(timestamp: number): Promise<void> {
+  await browser.storage.local.set({ lastPublishedAt: timestamp });
+}
+
 export interface RemoteSnapshot extends PresencePayload {
   receivedAt: number;
 }
@@ -284,7 +299,8 @@ export async function clearDismissedMirrorsForDevice(
 
 // Mirrors the decryptError pattern: a transient status flag the popup reads reactively via
 // storage.onChanged, since publishPresence() runs on a timer with no caller to report to
-// directly. A publish that did not happen MUST NOT read as success (spec §4.9).
+// directly. A publish that did not happen MUST NOT read as success (spec §11 — failures are
+// reported, never swallowed).
 export async function getLiveSyncError(): Promise<string | null> {
   const stored = await browser.storage.local.get('liveSyncError');
   return typeof stored.liveSyncError === 'string' ? stored.liveSyncError : null;
@@ -302,6 +318,7 @@ export async function clearLiveSyncState(): Promise<void> {
   await browser.storage.local.remove([
     'liveSync',
     'lastSnapshotHash',
+    'lastPublishedAt',
     'remoteSnapshots',
     'liveSyncError',
   ]);
