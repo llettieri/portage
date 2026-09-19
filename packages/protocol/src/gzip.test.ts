@@ -18,7 +18,9 @@ describe('gzip / gunzip', () => {
   });
 
   it('shrinks a highly repetitive payload', async () => {
-    const original = new TextEncoder().encode('https://example.com/'.repeat(500));
+    const original = new TextEncoder().encode(
+      'https://example.com/'.repeat(500),
+    );
     const compressed = await gzip(original);
     expect(compressed.byteLength).toBeLessThan(original.byteLength / 4);
   });

@@ -160,7 +160,8 @@ async function publishPresence(): Promise<void> {
     );
   }
   if (
-    new TextEncoder().encode(JSON.stringify(envelope)).length > MAX_PAYLOAD_BYTES
+    new TextEncoder().encode(JSON.stringify(envelope)).length >
+    MAX_PAYLOAD_BYTES
   ) {
     // Truncated all the way to zero tabs and it *still* doesn't fit — the envelope
     // overhead alone exceeds the cap. Vanishingly unlikely, but report it rather than
@@ -239,7 +240,11 @@ async function doReconcile(): Promise<void> {
     if (tab.url === sentinelUrl || !isMirrorUrl(tab.url, origin)) continue;
     const parsed = parseMirrorUrl(tab.url);
     if (!parsed) continue;
-    existingMirrors.push({ id: tab.id, deviceId: parsed.deviceId, url: parsed.url });
+    existingMirrors.push({
+      id: tab.id,
+      deviceId: parsed.deviceId,
+      url: parsed.url,
+    });
   }
 
   const { toCreate, toCloseIds } = diffMirrorTabs(desired, existingMirrors);
@@ -304,7 +309,11 @@ async function applyPayload(
 ): Promise<void> {
   if (kind === 'handoff') {
     const handoff = payload as HandoffPayload;
-    await addPendingHandoff({ id: itemId, url: handoff.url, title: handoff.title });
+    await addPendingHandoff({
+      id: itemId,
+      url: handoff.url,
+      title: handoff.title,
+    });
     return;
   }
   if (kind === 'presence') {
@@ -338,11 +347,15 @@ async function applyPayload(
 async function removeFromMirrorTabIndex(tabId: number): Promise<void> {
   const index = await getMirrorTabIndex();
   if (!(tabId in index)) return;
-  const { [tabId]: _removed, ...rest } = index;
+  const rest = { ...index };
+  delete rest[tabId];
   await setMirrorTabIndex(rest);
 }
 
-async function sendCloseRequest(toDeviceId: string, url: string): Promise<void> {
+async function sendCloseRequest(
+  toDeviceId: string,
+  url: string,
+): Promise<void> {
   await connect().catch(() => {});
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
   const cryptoKey = await resolveCryptoKey();
@@ -352,7 +365,12 @@ async function sendCloseRequest(toDeviceId: string, url: string): Promise<void> 
   const deviceId = await getDeviceId();
   const envelope = await buildEnvelope(
     cryptoKey,
-    { room: config.roomId, device: deviceId, to: toDeviceId, kind: 'close-request' },
+    {
+      room: config.roomId,
+      device: deviceId,
+      to: toDeviceId,
+      kind: 'close-request',
+    },
     { url, requestedAt: Date.now() } satisfies CloseRequestPayload,
   );
   socket.send(JSON.stringify(envelope));
@@ -712,7 +730,12 @@ async function handleIncomingFrame(data: unknown): Promise<void> {
   await setDecryptError(false);
   // Never open a received URL here — only store or act on it. A handoff is opened only by
   // a direct popup click; a mirror tab only navigates on visibility (spec §4.4).
-  await applyPayload(frame.envelope.kind, payload, frame.envelope.device, frame.id);
+  await applyPayload(
+    frame.envelope.kind,
+    payload,
+    frame.envelope.device,
+    frame.id,
+  );
 }
 
 async function sendCurrentTab(to: string): Promise<void> {
@@ -854,13 +877,18 @@ export default defineBackground({
           });
           return true;
         }
-        if (message?.type === 'set-live-sync' && typeof message.value === 'boolean') {
+        if (
+          message?.type === 'set-live-sync' &&
+          typeof message.value === 'boolean'
+        ) {
           void setLiveSync(message.value)
             .then(() => {
               if (!message.value) {
                 return setLiveSyncError(null);
               }
-              return Promise.all([publishPresence(), reconcile()]).then(() => undefined);
+              return Promise.all([publishPresence(), reconcile()]).then(
+                () => undefined,
+              );
             })
             .then(() => sendResponse({ ok: true }))
             .catch((error: unknown) =>

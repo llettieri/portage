@@ -19,7 +19,10 @@ describe('validateEnvelopePayload', () => {
   });
 
   it('accepts a well-shaped presence payload', () => {
-    const payload = { tabs: [{ url: 'https://a.example', title: 'A' }], snapshotTs: 1 };
+    const payload = {
+      tabs: [{ url: 'https://a.example', title: 'A' }],
+      snapshotTs: 1,
+    };
     expect(validateEnvelopePayload('presence', payload)).toEqual(payload);
   });
 
@@ -80,7 +83,9 @@ describe('presence / close-request validators', () => {
   it('accepts a presence payload with truncated: true and a lastAccessed tab field', () => {
     expect(
       isPresencePayload({
-        tabs: [{ url: 'https://example.com', title: 'Example', lastAccessed: 5 }],
+        tabs: [
+          { url: 'https://example.com', title: 'Example', lastAccessed: 5 },
+        ],
         truncated: true,
         snapshotTs: 1,
       }),

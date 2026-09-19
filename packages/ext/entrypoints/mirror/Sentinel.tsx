@@ -3,7 +3,9 @@ import { MAX_MIRROR_TABS_PER_DEVICE } from 'protocol';
 import { getRemoteSnapshots, type RemoteSnapshot } from '@/lib/state.ts';
 
 export function Sentinel(): ReactNode {
-  const [snapshots, setSnapshots] = useState<Record<string, RemoteSnapshot>>({});
+  const [snapshots, setSnapshots] = useState<Record<string, RemoteSnapshot>>(
+    {},
+  );
 
   useEffect(() => {
     void getRemoteSnapshots().then(setSnapshots);

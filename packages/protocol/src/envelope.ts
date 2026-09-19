@@ -23,11 +23,7 @@ export class UnsupportedEnvelopeVersionError extends Error {
 export async function buildEnvelope(
   key: CryptoKey,
   header: Omit<EnvelopeHeader, 'ts' | 'v'>,
-  payload:
-    | HandoffPayload
-    | PresencePayload
-    | CloseRequestPayload
-    | StashItem[],
+  payload: HandoffPayload | PresencePayload | CloseRequestPayload | StashItem[],
 ): Promise<Envelope> {
   const ts = Date.now();
   const fullHeader: EnvelopeHeader = { ...header, v: ENVELOPE_VERSION, ts };
@@ -58,11 +54,7 @@ export async function openEnvelope(
     kind: envelope.kind,
     ts: envelope.ts,
   };
-  const compressed = await decryptBytes(
-    key,
-    envelope,
-    serializeHeader(header),
-  );
+  const compressed = await decryptBytes(key, envelope, serializeHeader(header));
   const plaintext = await gunzip(compressed);
   const payload: unknown = JSON.parse(new TextDecoder().decode(plaintext));
   return validateEnvelopePayload(envelope.kind, payload);

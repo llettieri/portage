@@ -426,7 +426,8 @@ export class Room implements DurableObject {
           toDeviceId,
         )
         .toArray();
-      if (Number(countRows[0]?.n ?? 0) >= MAX_QUEUE_DEPTH_PER_DEVICE) return null;
+      if (Number(countRows[0]?.n ?? 0) >= MAX_QUEUE_DEPTH_PER_DEVICE)
+        return null;
     }
 
     const id = crypto.randomUUID();

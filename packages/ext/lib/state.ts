@@ -167,11 +167,10 @@ export interface RemoteSnapshot extends PresencePayload {
 
 export async function getRemoteSnapshots(): Promise<
   Record<string, RemoteSnapshot>
-> {
+  > {
   const stored = await browser.storage.local.get('remoteSnapshots');
   return (
-    (stored.remoteSnapshots as Record<string, RemoteSnapshot> | undefined) ??
-    {}
+    (stored.remoteSnapshots as Record<string, RemoteSnapshot> | undefined) ?? {}
   );
 }
 
@@ -219,7 +218,7 @@ export interface MirrorTabInfo {
 // service-worker restart between the mirror being created and it being closed.
 export async function getMirrorTabIndex(): Promise<
   Record<number, MirrorTabInfo>
-> {
+  > {
   const stored = await browser.storage.session.get('mirrorTabIndex');
   return (
     (stored.mirrorTabIndex as Record<number, MirrorTabInfo> | undefined) ?? {}
@@ -278,7 +277,8 @@ export async function clearDismissedMirrorsForDevice(
 ): Promise<void> {
   const existing = await getDismissedMirrors();
   if (!(deviceId in existing)) return;
-  const { [deviceId]: _removed, ...rest } = existing;
+  const rest = { ...existing };
+  delete rest[deviceId];
   await browser.storage.session.set({ dismissedMirrors: rest });
 }
 

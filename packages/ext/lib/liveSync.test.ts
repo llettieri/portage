@@ -77,7 +77,11 @@ describe('filterPublishableTabs', () => {
   it('drops non-http(s) tabs and extension-origin tabs — the origin rule / loop prevention', () => {
     const tabs = [
       { url: 'https://example.com', title: 'Example', lastAccessed: 1 },
-      { url: `${ORIGIN}/mirror.html?d=x&u=y&t=z`, title: 'Mirror', lastAccessed: 2 },
+      {
+        url: `${ORIGIN}/mirror.html?d=x&u=y&t=z`,
+        title: 'Mirror',
+        lastAccessed: 2,
+      },
       { url: `${ORIGIN}/popup.html`, title: 'Popup', lastAccessed: 3 },
       { url: 'chrome://extensions', title: 'Extensions', lastAccessed: 4 },
       { url: 'javascript:void(0)', title: 'JS', lastAccessed: 5 },
@@ -146,8 +150,14 @@ describe('hashTabSet', () => {
 describe('computeDesiredMirrors', () => {
   it('includes tabs from every device', () => {
     const snapshots = {
-      'device-a': { tabs: [{ url: 'https://a.com', title: 'A' }], snapshotTs: 1 },
-      'device-b': { tabs: [{ url: 'https://b.com', title: 'B' }], snapshotTs: 1 },
+      'device-a': {
+        tabs: [{ url: 'https://a.com', title: 'A' }],
+        snapshotTs: 1,
+      },
+      'device-b': {
+        tabs: [{ url: 'https://b.com', title: 'B' }],
+        snapshotTs: 1,
+      },
     };
     const desired = computeDesiredMirrors(snapshots, 50);
     expect(desired).toEqual([
@@ -190,8 +200,14 @@ describe('computeDesiredMirrors', () => {
 
   it('excludes a dismissed URL for that device but not for another device', () => {
     const snapshots = {
-      'device-a': { tabs: [{ url: 'https://a.com', title: 'A' }], snapshotTs: 1 },
-      'device-b': { tabs: [{ url: 'https://a.com', title: 'A (on b)' }], snapshotTs: 1 },
+      'device-a': {
+        tabs: [{ url: 'https://a.com', title: 'A' }],
+        snapshotTs: 1,
+      },
+      'device-b': {
+        tabs: [{ url: 'https://a.com', title: 'A (on b)' }],
+        snapshotTs: 1,
+      },
     };
     const dismissed = { 'device-a': ['https://a.com'] };
     expect(computeDesiredMirrors(snapshots, 50, dismissed)).toEqual([
@@ -218,13 +234,21 @@ describe('diffMirrorTabs', () => {
   });
 
   it('creates everything when nothing exists yet', () => {
-    const desired = [{ deviceId: 'device-a', url: 'https://a.com', title: 'A' }];
-    expect(diffMirrorTabs(desired, [])).toEqual({ toCreate: desired, toCloseIds: [] });
+    const desired = [
+      { deviceId: 'device-a', url: 'https://a.com', title: 'A' },
+    ];
+    expect(diffMirrorTabs(desired, [])).toEqual({
+      toCreate: desired,
+      toCloseIds: [],
+    });
   });
 
   it('closes everything when nothing is desired anymore', () => {
     const existing = [{ id: 1, deviceId: 'device-a', url: 'https://a.com' }];
-    expect(diffMirrorTabs([], existing)).toEqual({ toCreate: [], toCloseIds: [1] });
+    expect(diffMirrorTabs([], existing)).toEqual({
+      toCreate: [],
+      toCloseIds: [1],
+    });
   });
 });
 

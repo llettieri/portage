@@ -86,7 +86,11 @@ describe('envelope v2', () => {
       snapshotTs: 2,
     };
 
-    const envelope = await buildEnvelope(key, { ...HEADER, kind: 'presence' }, payload);
+    const envelope = await buildEnvelope(
+      key,
+      { ...HEADER, kind: 'presence' },
+      payload,
+    );
     expect(envelope.v).toBe(ENVELOPE_VERSION);
     const opened = await openEnvelope(key, envelope);
 
@@ -110,7 +114,13 @@ describe('envelope v2', () => {
   it('round-trips a stash payload', async () => {
     const key = await testKey();
     const payload = [
-      { id: '1', url: 'https://example.com', title: 'Example', origin: 'arc' as const, addedAt: 1 },
+      {
+        id: '1',
+        url: 'https://example.com',
+        title: 'Example',
+        origin: 'arc' as const,
+        addedAt: 1,
+      },
     ];
 
     const envelope = await buildEnvelope(
@@ -174,12 +184,18 @@ describe('envelope v2', () => {
       lastAccessed: i,
     }));
 
-    const envelope = await buildEnvelope(key, { ...HEADER, kind: 'presence' }, {
-      tabs,
-      snapshotTs: 1,
-    });
+    const envelope = await buildEnvelope(
+      key,
+      { ...HEADER, kind: 'presence' },
+      {
+        tabs,
+        snapshotTs: 1,
+      },
+    );
 
-    const envelopeBytes = new TextEncoder().encode(JSON.stringify(envelope)).length;
+    const envelopeBytes = new TextEncoder().encode(
+      JSON.stringify(envelope),
+    ).length;
     expect(envelopeBytes).toBeLessThan(MAX_PAYLOAD_BYTES);
   });
 });
