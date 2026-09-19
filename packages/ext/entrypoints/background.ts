@@ -2,6 +2,7 @@ import {
   buildConnectUrl,
   buildEnvelope,
   computeReconnectDelay,
+  CLOSE_REQUEST_TTL_MS,
   CURRENT_PBKDF2_ITERATIONS,
   decodePairingPayload,
   decrypt,
@@ -15,16 +16,19 @@ import {
   toBase64,
   toHttpBase,
   type CloseRequestPayload,
+  type EnvelopeKind,
   type HandoffPayload,
   type InboxDrainResponse,
   type PresencePayload,
   type RelayFrame,
+  type StashItem,
 } from 'protocol';
 import {
   addClosingTabId,
   addDismissedMirror,
   addPendingHandoff,
   clearDeviceId,
+  clearDismissedMirrorsForDevice,
   clearLiveSyncState,
   clearPendingHandoffs,
   clearRoomConfig,
@@ -45,6 +49,7 @@ import {
   setLiveSync,
   setLiveSyncError,
   setMirrorTabIndex,
+  setRemoteSnapshot,
   setRoomConfig,
   setSentinelTabId,
   setStoredPassphrase,
@@ -58,6 +63,7 @@ import {
   diffMirrorTabs,
   filterPublishableTabs,
   hashTabSet,
+  isCloseRequestExpired,
   isMirrorUrl,
   parseMirrorUrl,
   type ExistingMirrorTab,
@@ -269,6 +275,64 @@ async function doReconcile(): Promise<void> {
   }
 
   await setMirrorTabIndex(index);
+}
+
+async function applyCloseRequest(payload: CloseRequestPayload): Promise<void> {
+  if (
+    isCloseRequestExpired(payload.requestedAt, Date.now(), CLOSE_REQUEST_TTL_MS)
+  ) {
+    return;
+  }
+  const origin = extensionOrigin();
+  const allTabs = await browser.tabs.query({});
+  const matches = allTabs.filter(
+    (tab) => tab.url === payload.url && !isMirrorUrl(tab.url ?? '', origin),
+  );
+  if (matches.length === 0) return; // already gone — the common case, not an error
+  const target = matches.reduce((oldest, tab) =>
+    (tab.lastAccessed ?? 0) < (oldest.lastAccessed ?? 0) ? tab : oldest,
+  );
+  if (typeof target.id !== 'number') return;
+  await browser.tabs.remove(target.id);
+}
+
+async function applyPayload(
+  kind: EnvelopeKind,
+  payload: HandoffPayload | PresencePayload | CloseRequestPayload | StashItem[],
+  senderDeviceId: string,
+  itemId: string | null,
+): Promise<void> {
+  if (kind === 'handoff') {
+    const handoff = payload as HandoffPayload;
+    await addPendingHandoff({ id: itemId, url: handoff.url, title: handoff.title });
+    return;
+  }
+  if (kind === 'presence') {
+    const presence = payload as PresencePayload;
+    const existing = (await getRemoteSnapshots())[senderDeviceId];
+    const isIdentical =
+      existing !== undefined &&
+      existing.snapshotTs === presence.snapshotTs &&
+      existing.truncated === presence.truncated &&
+      JSON.stringify(existing.tabs) === JSON.stringify(presence.tabs);
+    // A redelivered (duplicate) frame is identical to what's already stored — skip the
+    // write entirely, not just the reconcile, so it doesn't fire storage.onChanged and
+    // churn the popup/sentinel on every redelivery (spec §4.3).
+    if (isIdentical) return;
+    await setRemoteSnapshot(senderDeviceId, {
+      ...presence,
+      receivedAt: Date.now(),
+    });
+    // A genuinely new snapshot from this device is "the next snapshot" any locally
+    // dismissed (manually closed) mirror for it was waiting for (spec §4.5) — clear the
+    // dismissal whether or not the new snapshot still contains that URL.
+    await clearDismissedMirrorsForDevice(senderDeviceId);
+    await reconcile();
+    return;
+  }
+  if (kind === 'close-request') {
+    await applyCloseRequest(payload as CloseRequestPayload);
+  }
 }
 
 async function removeFromMirrorTabIndex(tabId: number): Promise<void> {
@@ -596,14 +660,12 @@ async function drainInbox(): Promise<void> {
       }
       await setDecryptError(false);
       try {
-        if (item.envelope.kind === 'handoff') {
-          const handoff = payload as HandoffPayload;
-          await addPendingHandoff({
-            id: item.id,
-            url: handoff.url,
-            title: handoff.title,
-          });
-        }
+        await applyPayload(
+          item.envelope.kind,
+          payload,
+          item.envelope.device,
+          item.id,
+        );
         if (item.id) ackIds.push(item.id);
       } catch {
         // Storage failed for a genuinely-decrypted item — don't ack, so it's redelivered
@@ -648,16 +710,9 @@ async function handleIncomingFrame(data: unknown): Promise<void> {
   }
 
   await setDecryptError(false);
-  // Never open a received URL here (CLAUDE.md constraint 10) — only store it.
-  // The popup opens it, only in direct response to the human clicking "Open".
-  if (frame.envelope.kind === 'handoff') {
-    const handoff = payload as HandoffPayload;
-    await addPendingHandoff({
-      id: frame.id,
-      url: handoff.url,
-      title: handoff.title,
-    });
-  }
+  // Never open a received URL here — only store or act on it. A handoff is opened only by
+  // a direct popup click; a mirror tab only navigates on visibility (spec §4.4).
+  await applyPayload(frame.envelope.kind, payload, frame.envelope.device, frame.id);
 }
 
 async function sendCurrentTab(to: string): Promise<void> {
