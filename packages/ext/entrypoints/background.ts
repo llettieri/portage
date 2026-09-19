@@ -19,6 +19,7 @@ import {
 import {
   addPendingHandoff,
   clearDeviceId,
+  clearLiveSyncState,
   clearPendingHandoffs,
   clearRoomConfig,
   getDeviceId,
@@ -213,6 +214,7 @@ async function forgetRoom(): Promise<void> {
   await clearRoomConfig();
   await clearDeviceId();
   await clearPendingHandoffs();
+  await clearLiveSyncState();
   await setDecryptError(false);
   cachedCryptoKey = null;
   await setStoredPassphrase(null);
