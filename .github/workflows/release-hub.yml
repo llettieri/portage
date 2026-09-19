@@ -7,6 +7,7 @@ on:
   push:
     tags:
       - 'hub-[0-9]+.[0-9]+.[0-9]+'
+      - 'hub-[0-9]+.[0-9]+.[0-9]+-*'
 
 jobs:
   quality:
@@ -39,9 +40,16 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # The tag (hub-1.2.3) is the source of truth for the release; make sure
-      # nobody tagged a commit whose package.json was never bumped to match.
+      # The tag (hub-1.2.3, or hub-1.2.3-beta.1 for a pre-release) is the
+      # source of truth for the release; make sure nobody tagged a commit
+      # whose package.json was never bumped to match.
+      #
+      # NOTE: the Worker has no separate staging environment in
+      # wrangler.toml, so a pre-release tag deploys to the same place a
+      # full release would. This only marks the GitHub Release as a
+      # pre-release; it does not sandbox the deploy itself.
       - name: Check tag matches package version
+        id: version
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#hub-}"
           PKG_VERSION="$(node -p "require('./packages/hub/package.json').version")"
@@ -49,6 +57,10 @@ jobs:
             echo "Tag $GITHUB_REF_NAME (version $TAG_VERSION) does not match packages/hub/package.json version $PKG_VERSION" >&2
             exit 1
           fi
+          case "$TAG_VERSION" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
 
       - name: Deploy to Cloudflare
         working-directory: packages/hub
@@ -64,3 +76,4 @@ jobs:
         with:
           allowUpdates: true
           generateReleaseNotes: true
+          prerelease: ${{ steps.version.outputs.prerelease }}
