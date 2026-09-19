@@ -337,6 +337,18 @@ export class Room implements DurableObject {
       return;
     }
 
+    const senderAttachment =
+      sender.deserializeAttachment() as SocketAttachment | null;
+    if (!senderAttachment || envelope.device !== senderAttachment.deviceId) {
+      // The hub must never trust a self-reported sender identity in the envelope body —
+      // only the identity the socket authenticated as, at upgrade time. Without this, a
+      // device could put any `device` string in the envelope and forge presence updates as
+      // another device (presence rows are upserted by (to_device, sender_device)) or evict
+      // another device's pending presence row, and since presence bypasses the queue-depth
+      // cap, forge unbounded storage growth.
+      return;
+    }
+
     if (!envelope.to) {
       // getWebSockets(undefined) returns every socket in the room, not zero — an
       // envelope missing `to` must be dropped explicitly, never fanned out.
@@ -348,15 +360,13 @@ export class Room implements DurableObject {
     }
 
     if (envelope.to === 'all') {
-      const senderAttachment =
-        sender.deserializeAttachment() as SocketAttachment | null;
       const deviceRows = this.state.storage.sql
         .exec<{ deviceId: string }>(
           'SELECT device_id AS deviceId FROM devices WHERE revoked = 0',
         )
         .toArray();
       for (const row of deviceRows) {
-        if (row.deviceId === senderAttachment?.deviceId) continue;
+        if (row.deviceId === senderAttachment.deviceId) continue;
         const id = this.enqueue(row.deviceId, envelope);
         if (id === null) continue; // queue full for this device — drop rather than partially deliver
         const frame: RelayFrame = { id, envelope };
@@ -413,7 +423,7 @@ export class Room implements DurableObject {
 
     if (envelope.kind === 'presence') {
       // Presence is last-value, not a log: a newer snapshot from this sender replaces
-      // this recipient's pending row rather than queueing behind it (spec §5.1).
+      // this recipient's pending row rather than queueing behind it (spec §6.4).
       this.state.storage.sql.exec(
         "DELETE FROM inbox WHERE to_device = ? AND sender_device = ? AND kind = 'presence'",
         toDeviceId,

@@ -626,6 +626,7 @@ async function forgetRoom(): Promise<void> {
   await clearRoomConfig();
   await clearDeviceId();
   await clearPendingHandoffs();
+  await teardownMirrorWindow();
   await clearLiveSyncState();
   await setDecryptError(false);
   cachedCryptoKey = null;

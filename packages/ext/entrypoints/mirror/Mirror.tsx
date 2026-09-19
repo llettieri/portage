@@ -13,8 +13,9 @@ export function Mirror(): ReactNode {
   useEffect(() => {
     function navigateIfVisible(): void {
       if (document.visibilityState !== 'visible') return;
-      // Defense in depth, independent of the sender-side filter (spec §4.4): refuse to
-      // navigate to anything that isn't http(s), even if it somehow arrived here.
+      // Defense in depth, independent of the sender-side filter (spec §8.4 — only http(s)
+      // is accepted; anything else is discarded): refuse to navigate to anything that
+      // isn't http(s), even if it somehow arrived here.
       if (!isHttpUrl(url)) return;
       window.location.replace(url);
     }

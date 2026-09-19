@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { MAX_MIRROR_TABS_PER_DEVICE } from 'protocol';
+import { isHttpUrl } from '@/lib/liveSync.ts';
 import { getRemoteSnapshots, type RemoteSnapshot } from '@/lib/state.ts';
 
 export function Sentinel(): ReactNode {
@@ -29,8 +30,9 @@ export function Sentinel(): ReactNode {
       <h1>Portage — live sync</h1>
       {devices.length === 0 && <p>No remote devices yet.</p>}
       {devices.map(([deviceId, snapshot]) => {
-        // Dedupe by URL first — computeDesiredMirrors (Task 9) dedupes before applying the
-        // cap, so slicing the raw (possibly duplicate-containing) list here would show a
+        // Dedupe by URL first — computeDesiredMirrors (packages/ext/lib/liveSync.ts)
+        // dedupes before applying the cap, so slicing the raw (possibly
+        // duplicate-containing) list here would show a
         // tab as "mirrored" that has no mirror tab, or hide one that does.
         const deduped = snapshot.tabs.filter(
           (tab, i, all) => all.findIndex((t) => t.url === tab.url) === i,
@@ -61,9 +63,13 @@ export function Sentinel(): ReactNode {
               <ul>
                 {overflow.map((tab, i) => (
                   <li key={`${deviceId}-overflow-${i}-${tab.url}`}>
-                    <a href={tab.url} target="_blank" rel="noreferrer">
-                      {tab.title || tab.url}
-                    </a>
+                    {isHttpUrl(tab.url) ? (
+                      <a href={tab.url} target="_blank" rel="noreferrer">
+                        {tab.title || tab.url}
+                      </a>
+                    ) : (
+                      tab.title || tab.url
+                    )}
                   </li>
                 ))}
               </ul>

@@ -180,9 +180,9 @@ export interface RemoteSnapshot extends PresencePayload {
   receivedAt: number;
 }
 
-export async function getRemoteSnapshots(): Promise<
-  Record<string, RemoteSnapshot>
-  > {
+export type RemoteSnapshots = Record<string, RemoteSnapshot>;
+
+export async function getRemoteSnapshots(): Promise<RemoteSnapshots> {
   const stored = await browser.storage.local.get('remoteSnapshots');
   return (
     (stored.remoteSnapshots as Record<string, RemoteSnapshot> | undefined) ?? {}
@@ -227,13 +227,13 @@ export interface MirrorTabInfo {
   url: string;
 }
 
+export type MirrorTabIndex = Record<number, MirrorTabInfo>;
+
 // browser.tabs.onRemoved fires with only a tabId — never the removed tab's former URL —
 // so identifying which remote device's mirror just closed requires having recorded the
 // mapping beforehand. Session storage, not a module global, so it survives a
 // service-worker restart between the mirror being created and it being closed.
-export async function getMirrorTabIndex(): Promise<
-  Record<number, MirrorTabInfo>
-  > {
+export async function getMirrorTabIndex(): Promise<MirrorTabIndex> {
   const stored = await browser.storage.session.get('mirrorTabIndex');
   return (
     (stored.mirrorTabIndex as Record<number, MirrorTabInfo> | undefined) ?? {}
