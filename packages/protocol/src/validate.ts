@@ -1,8 +1,10 @@
 import type {
+  CloseRequestPayload,
   EnvelopeKind,
   HandoffPayload,
   PresencePayload,
   StashItem,
+  TabRef,
 } from './types.js';
 
 export class InvalidPayloadError extends Error {
@@ -26,16 +28,32 @@ export function isHandoffPayload(value: unknown): value is HandoffPayload {
   );
 }
 
+export function isTabRef(value: unknown): value is TabRef {
+  return (
+    isRecord(value) &&
+    typeof value.url === 'string' &&
+    typeof value.title === 'string' &&
+    (value.lastAccessed === undefined || typeof value.lastAccessed === 'number')
+  );
+}
+
 export function isPresencePayload(value: unknown): value is PresencePayload {
   return (
     isRecord(value) &&
     Array.isArray(value.tabs) &&
-    value.tabs.every(
-      (tab) =>
-        isRecord(tab) &&
-        typeof tab.url === 'string' &&
-        typeof tab.title === 'string',
-    )
+    value.tabs.every(isTabRef) &&
+    typeof value.snapshotTs === 'number' &&
+    (value.truncated === undefined || typeof value.truncated === 'boolean')
+  );
+}
+
+export function isCloseRequestPayload(
+  value: unknown,
+): value is CloseRequestPayload {
+  return (
+    isRecord(value) &&
+    typeof value.url === 'string' &&
+    typeof value.requestedAt === 'number'
   );
 }
 
@@ -59,9 +77,10 @@ export function isStashList(value: unknown): value is StashItem[] {
 export function validateEnvelopePayload(
   kind: EnvelopeKind,
   value: unknown,
-): HandoffPayload | PresencePayload | StashItem[] {
+): HandoffPayload | PresencePayload | CloseRequestPayload | StashItem[] {
   if (kind === 'handoff' && isHandoffPayload(value)) return value;
   if (kind === 'presence' && isPresencePayload(value)) return value;
+  if (kind === 'close-request' && isCloseRequestPayload(value)) return value;
   if (kind === 'stash' && isStashList(value)) return value;
   throw new InvalidPayloadError(kind);
 }

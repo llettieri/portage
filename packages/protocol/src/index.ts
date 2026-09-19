@@ -1,4 +1,5 @@
 export type {
+  CloseRequestPayload,
   Envelope,
   EnvelopeHeader,
   EnvelopeKind,
@@ -16,6 +17,7 @@ export type {
   RelayFrame,
   StashItem,
   StashItemOrigin,
+  TabRef,
 } from './types.js';
 export {
   CURRENT_PBKDF2_ITERATIONS,
@@ -24,6 +26,12 @@ export {
   encrypt,
 } from './crypto.js';
 export type { EncryptedPayload } from './crypto.js';
+export {
+  MAX_PAYLOAD_BYTES,
+  MAX_MIRROR_TABS_PER_DEVICE,
+  CLOSE_REQUEST_TTL_MS,
+  PRESENCE_EXPIRY_MS,
+} from './limits.js';
 export { serializeHeader } from './header.js';
 export { buildEnvelope, openEnvelope } from './envelope.js';
 export { InvalidPayloadError, validateEnvelopePayload } from './validate.js';
